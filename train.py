@@ -7,7 +7,7 @@ from mypath import Path
 from dataloaders import make_data_loader
 from modeling.sync_batchnorm.replicate import patch_replication_callback
 from modeling.deeplab import *
-from utils.loss import SegmentationLosses
+from utils.loss import SegmentationLosses, DepthLosses
 from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
@@ -55,7 +55,7 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = DepthLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
@@ -75,12 +75,18 @@ class Trainer(object):
         if args.resume is not None:
             if not os.path.isfile(args.resume):
                 raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
+            checkpoint = torch.load(args.resume, map_location='gpu' if args.cuda else 'cpu')
             args.start_epoch = checkpoint['epoch']
             if args.cuda:
-                self.model.module.load_state_dict(checkpoint['state_dict'])
+                state_dict = checkpoint['state_dict']
+                state_dict.popitem(last=True)
+                state_dict.popitem(last=True)
+                self.model.module.load_state_dict(state_dict, strict=False)
             else:
-                self.model.load_state_dict(checkpoint['state_dict'])
+                state_dict = checkpoint['state_dict']
+                state_dict.popitem(last=True)
+                state_dict.popitem(last=True)
+                self.model.load_state_dict(state_dict, strict=False)
             if not args.ft:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             self.best_pred = checkpoint['best_pred']
@@ -104,6 +110,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
             output = self.model(image)
             loss = self.criterion(output, target)
+            # import pdb;pdb.set_trace()
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
@@ -184,7 +191,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='pascal',
-                        choices=['pascal', 'coco', 'cityscapes'],
+                        choices=['pascal', 'coco', 'cityscapes', 'apollo'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--use-sbd', action='store_true', default=True,
                         help='whether to use SBD dataset (default: True)')
@@ -198,8 +205,8 @@ def main():
                         help='whether to use sync bn (default: auto)')
     parser.add_argument('--freeze-bn', type=bool, default=False,
                         help='whether to freeze bn parameters (default: False)')
-    parser.add_argument('--loss-type', type=str, default='ce',
-                        choices=['ce', 'focal'],
+    parser.add_argument('--loss-type', type=str, default='depth_loss',
+                        choices=['ce', 'focal', 'depth_loss', 'depth_lod'],
                         help='loss func type (default: ce)')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',

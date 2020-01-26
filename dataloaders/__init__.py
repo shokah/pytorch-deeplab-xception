@@ -1,8 +1,8 @@
-from dataloaders.datasets import cityscapes, coco, combine_dbs, pascal, sbd
+from dataloaders.datasets import cityscapes, coco, combine_dbs, pascal, sbd, apollo
 from torch.utils.data import DataLoader
 
-def make_data_loader(args, **kwargs):
 
+def make_data_loader(args, **kwargs):
     if args.dataset == 'pascal':
         train_set = pascal.VOCSegmentation(args, split='train')
         val_set = pascal.VOCSegmentation(args, split='val')
@@ -28,6 +28,20 @@ def make_data_loader(args, **kwargs):
 
         return train_loader, val_loader, test_loader, num_class
 
+    elif args.dataset == 'apollo':
+        train_set = apollo.ApolloDepthSegmentation(args, split='train')
+        # val_set = apollo.ApolloDepthSegmentation(args, split='val') # todo: fix this
+        # test_set = apollo.ApolloDepthSegmentation(args, split='test')# todo: fix this
+        num_class = train_set.NUM_CLASSES
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+        # val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs)# todo: fix this
+        # test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, **kwargs)# todo: fix this
+
+        val_loader = None  # todo: fix this
+        test_loader = None  # todo: fix this
+
+        return train_loader, val_loader, test_loader, num_class
+
     elif args.dataset == 'coco':
         train_set = coco.COCOSegmentation(args, split='train')
         val_set = coco.COCOSegmentation(args, split='val')
@@ -39,4 +53,3 @@ def make_data_loader(args, **kwargs):
 
     else:
         raise NotImplementedError
-

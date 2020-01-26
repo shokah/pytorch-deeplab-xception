@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 
 class SegmentationLosses(object):
@@ -79,6 +80,7 @@ class DepthLosses(object):
         '''
         lamda = 1.0
         n, c, h, w = predict.size()
+        target = F.one_hot(target.long(), predict.shape[1]).transpose(1, -1).squeeze(-1).float()
         di = (target - predict) / self.num_class
         k = h * w
         di2 = torch.pow(di, 2)
@@ -89,7 +91,7 @@ class DepthLosses(object):
         if self.batch_average:
             loss /= n
 
-        return loss
+        return loss.mean()
 
     def DepthLODLoss(self, logit, target, gamma=2, alpha=0.5):
         n, c, h, w = logit.size()

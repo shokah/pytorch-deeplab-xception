@@ -10,7 +10,7 @@ from dataloaders import custom_transforms as tr
 
 class ApolloDepthSegmentation(data.Dataset):
 
-    def __init__(self, args, root=Path.db_root_dir('apollo'), split="train", NUM_CLASSES=250, min_depth=1.0,
+    def __init__(self, args, root=Path.db_root_dir('apollo'), split="train", NUM_CLASSES=250, min_depth=5.0,
                  max_depth=655.0, split_method='sid'):
         self.NUM_CLASSES = NUM_CLASSES
         self.root = root
@@ -26,13 +26,6 @@ class ApolloDepthSegmentation(data.Dataset):
         self.mapping = self.depth_class_spliter(self.NUM_CLASSES, self.min_depth, self.max_depth, self.split_method)
 
         self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.jpg')
-
-        # self.void_classes = None
-        # self.valid_classes = range(self.NUM_CLASSES)
-        # self.class_names = range(self.NUM_CLASSES)
-
-        # self.ignore_index = 255
-        # self.class_map = dict(zip(self.valid_classes, range(self.NUM_CLASSES)))
 
         if not self.files[split]:
             raise Exception("No files for split=[%s] found in %s" % (split, self.images_base))
@@ -86,7 +79,8 @@ class ApolloDepthSegmentation(data.Dataset):
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
             tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.args.base_size, crop_size=self.args.crop_size, fill=255),
+            tr.FixScaleCrop(crop_size=self.args.crop_size),
+            # tr.RandomScaleCrop(base_size=self.args.base_size, crop_size=self.args.crop_size, fill=255),
             tr.RandomGaussianBlur(),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
