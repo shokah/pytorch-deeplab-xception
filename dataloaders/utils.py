@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+
 def decode_seg_map_sequence(label_masks, dataset='pascal'):
     rgb_masks = []
     for label_mask in label_masks:
@@ -27,6 +28,9 @@ def decode_segmap(label_mask, dataset, plot=False):
     elif dataset == 'cityscapes':
         n_classes = 19
         label_colours = get_cityscapes_labels()
+    elif dataset == 'apollo':
+        n_classes = 250
+        label_colours = get_apollo_labels()
     else:
         raise NotImplementedError
 
@@ -86,6 +90,13 @@ def get_cityscapes_labels():
         [0, 80, 100],
         [0, 0, 230],
         [119, 11, 32]])
+
+
+def get_apollo_labels():
+    ''' 250 x 3'''
+    x = np.array([range(250)]).T
+    x = np.repeat(x, 3, axis=1)
+    return x
 
 
 def get_pascal_labels():
