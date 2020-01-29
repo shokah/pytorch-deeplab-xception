@@ -44,6 +44,9 @@ class ApolloDepthSegmentation(data.Dataset):
                                 os.sep.join(path))
 
         _img = Image.open(img_path).convert('RGB')
+        if not os.path.exists(lbl_path):
+            os.remove(img_path)
+            print(f"{img_path} was deleted")
         _tmp = np.array(Image.open(lbl_path), dtype=np.uint8)
         _tmp = self.decode_apollo(_tmp)
         _tmp = self.classify_depth(_tmp, self.mapping)  # convert continuous depth to discrete depth
@@ -149,9 +152,12 @@ if __name__ == '__main__':
     args.base_size = 513
     args.crop_size = 513
 
-    apollo_train = ApolloDepthSegmentation(args, split='train')
+    # apollo = ApolloDepthSegmentation(args, split='train')
+    # apollo = ApolloDepthSegmentation(args, split='val')
+    apollo = ApolloDepthSegmentation(args, split='test')
 
-    dataloader = DataLoader(apollo_train, batch_size=2, shuffle=True, num_workers=2)
+
+    dataloader = DataLoader(apollo, batch_size=2, shuffle=True, num_workers=2)
 
     for ii, sample in enumerate(dataloader):
         for jj in range(sample["image"].size()[0]):

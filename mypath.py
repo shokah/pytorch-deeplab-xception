@@ -10,7 +10,7 @@ class Path(object):
         elif dataset == 'coco':
             return '/path/to/datasets/coco/'
         elif dataset == 'apollo':
-            return r'C:\Users\shokah\Desktop\technion\master\research\dataset\apollo'
+            return r'D:\Shai_Schneider\Apollo_dataset'
         else:
             print('Dataset {} not available.'.format(dataset))
             raise NotImplementedError

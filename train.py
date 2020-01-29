@@ -75,7 +75,10 @@ class Trainer(object):
         if args.resume is not None:
             if not os.path.isfile(args.resume):
                 raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume, map_location='gpu' if args.cuda else 'cpu')
+            if not args.cuda:
+                checkpoint = torch.load(args.resume, map_location='cpu')
+            else:
+                checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             if args.cuda:
                 state_dict = checkpoint['state_dict']
