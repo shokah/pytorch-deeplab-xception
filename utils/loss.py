@@ -54,13 +54,14 @@ class SegmentationLosses(object):
 
 
 class DepthLosses(object):
-    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False, num_class=255):
+    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False, num_class=250):
         self.ignore_index = ignore_index
         self.weight = weight
         self.size_average = size_average
         self.batch_average = batch_average
         self.cuda = cuda
         self.num_class = num_class
+        self.softmax = nn.Softmax(1)
 
     def build_loss(self, mode='depth_loss'):
         """Choices: ['depth_loss' or 'depth_lod']"""
@@ -78,19 +79,20 @@ class DepthLosses(object):
         :param target: dataset label
         :return:
         '''
+
+        predict = self.softmax(predict)
+
         lamda = 1.0
         n, c, h, w = predict.size()
         target = F.one_hot(target.long(), predict.shape[1]).transpose(1, -1).squeeze(-1).float()
-        di = (target - predict) / self.num_class
+        di = (target - predict)
         k = h * w
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2, 3)) / k
         second_term = torch.pow(torch.sum(di, (1, 2, 3)), 2) / (k ** 2)
         loss = first_term - lamda * second_term
-
         if self.batch_average:
             loss /= n
-
         return loss.mean()
 
     def DepthLODLoss(self, logit, target, gamma=2, alpha=0.5):

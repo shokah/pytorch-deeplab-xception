@@ -10,9 +10,9 @@ from dataloaders import custom_transforms as tr
 
 class ApolloDepthSegmentation(data.Dataset):
 
-    def __init__(self, args, root=Path.db_root_dir('apollo'), split="train", NUM_CLASSES=250, min_depth=5.0,
+    def __init__(self, args, root=Path.db_root_dir('apollo'), split="train", num_class=250, min_depth=5.0,
                  max_depth=655.0, split_method='sid'):
-        self.NUM_CLASSES = NUM_CLASSES
+        self.NUM_CLASSES = num_class
         self.root = root
         self.split = split
         self.args = args
@@ -155,7 +155,6 @@ if __name__ == '__main__':
     # apollo = ApolloDepthSegmentation(args, split='train')
     # apollo = ApolloDepthSegmentation(args, split='val')
     apollo = ApolloDepthSegmentation(args, split='test')
-
 
     dataloader = DataLoader(apollo, batch_size=2, shuffle=True, num_workers=2)
 

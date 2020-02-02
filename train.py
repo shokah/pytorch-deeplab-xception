@@ -196,6 +196,10 @@ def main():
     parser.add_argument('--dataset', type=str, default='pascal',
                         choices=['pascal', 'coco', 'cityscapes', 'apollo'],
                         help='dataset name (default: pascal)')
+    parser.add_argument('--num_class', type=int, default=100,
+                        help='number of wanted classes')
+    parser.add_argument('--split_method', type=str, default='sid',
+                        help='depth splitting method (sid or ud)')
     parser.add_argument('--use-sbd', action='store_true', default=True,
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,

@@ -29,10 +29,11 @@ def make_data_loader(args, **kwargs):
         return train_loader, val_loader, test_loader, num_class
 
     elif args.dataset == 'apollo':
-        train_set = apollo.ApolloDepthSegmentation(args, split='train')
-        val_set = apollo.ApolloDepthSegmentation(args, split='val')
-        test_set = apollo.ApolloDepthSegmentation(args, split='test')
-        num_class = train_set.NUM_CLASSES
+        num_class = args.num_class
+        split_method = args.split_method
+        train_set = apollo.ApolloDepthSegmentation(args, split='train', num_class=num_class, split_method=split_method)
+        val_set = apollo.ApolloDepthSegmentation(args, split='val', num_class=num_class, split_method=split_method)
+        test_set = apollo.ApolloDepthSegmentation(args, split='test', num_class=num_class, split_method=split_method)
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
         val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs)
         test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, **kwargs)
