@@ -49,8 +49,9 @@ class ApolloDepthSegmentation(data.Dataset):
             print(f"{img_path} was deleted")
         _tmp = np.array(Image.open(lbl_path), dtype=np.uint8)
         _tmp = self.decode_apollo(_tmp)
-        _tmp = self.classify_depth(_tmp, self.mapping)  # convert continuous depth to discrete depth
+        # _tmp = self.classify_depth(_tmp, self.mapping)  # convert continuous depth to discrete depth
         # _tmp = self.encode_segmap(_tmp)
+        _tmp = self.clip_depth(_tmp)
         _target = Image.fromarray(_tmp)
 
         sample = {'image': _img, 'label': _target}
@@ -69,6 +70,11 @@ class ApolloDepthSegmentation(data.Dataset):
         for _validc in self.valid_classes:
             mask[mask == _validc] = self.class_map[_validc]
         return mask
+
+    def clip_depth(self, depth):
+        depth[self.min_depth > depth] = self.min_depth
+        depth[self.max_depth < depth] = self.max_depth
+        return depth
 
     def recursive_glob(self, rootdir='.', suffix=''):
         """Performs recursive glob with given suffix and rootdir

@@ -55,7 +55,10 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = DepthLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
+        self.criterion = DepthLosses(weight=weight,
+                                     cuda=args.cuda,
+                                     min_depth=args.min_depth,
+                                     max_depth=args.max_depth).build_loss(mode=args.loss_type)
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
@@ -215,6 +218,10 @@ def main():
     parser.add_argument('--loss-type', type=str, default='depth_loss',
                         choices=['ce', 'focal', 'depth_loss', 'depth_lod'],
                         help='loss func type (default: ce)')
+    parser.add_argument('--min_depth', type=float, default=0.1,
+                        help='min depth to predict')
+    parser.add_argument('--max_depth', type=float, default=655,
+                        help='max depth to predict')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')

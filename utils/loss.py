@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import numpy as np
 
 
 class SegmentationLosses(object):
@@ -54,12 +55,15 @@ class SegmentationLosses(object):
 
 
 class DepthLosses(object):
-    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False, num_class=250):
+    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False, num_class=250,
+                 min_depth=0.0, max_depth=655.0):
         self.ignore_index = ignore_index
         self.weight = weight
         self.size_average = size_average
         self.batch_average = batch_average
         self.cuda = cuda
+        self.shift = min_depth
+        self.bin_size = (max_depth - min_depth) / num_class
         self.num_class = num_class
         self.softmax = nn.Softmax(1)
 
@@ -74,22 +78,24 @@ class DepthLosses(object):
 
     def DepthLoss(self, predict, target):
         '''
-        scale invarient depth on label space
+        scale invariant depth on label space
         :param predict: network output
-        :param target: dataset label
+        :param target: data set label
         :return:
         '''
 
         predict = self.softmax(predict)
-
         lamda = 1.0
         n, c, h, w = predict.size()
-        target = F.one_hot(target.long(), predict.shape[1]).transpose(1, -1).squeeze(-1).float()
+        bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
+            .expand(predict.size()).cuda()
+        predict = self.shift + self.bin_size * torch.sum(bins * predict, 1)
         di = (target - predict)
+        # di = (torch.log(target) - torch.log(predict))
         k = h * w
         di2 = torch.pow(di, 2)
-        first_term = torch.sum(di2, (1, 2, 3)) / k
-        second_term = torch.pow(torch.sum(di, (1, 2, 3)), 2) / (k ** 2)
+        first_term = torch.sum(di2, (1, 2)) / k
+        second_term = torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
         loss = first_term - lamda * second_term
         if self.batch_average:
             loss /= n
