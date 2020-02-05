@@ -140,6 +140,7 @@ class EvaluatorDepth(object):
             errors['DELTA3'] = float(errors['DELTA3'].data.cpu().numpy())
 
         self.addErrors(errors)
+        self.averageErrors()
 
     def addErrors(self, errors):
         self.total_number += self.batch_size

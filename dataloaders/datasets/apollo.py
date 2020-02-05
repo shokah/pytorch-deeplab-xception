@@ -6,6 +6,7 @@ from torch.utils import data
 from mypath import Path
 from torchvision import transforms
 from dataloaders import custom_transforms as tr
+import torch
 
 
 class ApolloDepthSegmentation(data.Dataset):
@@ -36,12 +37,11 @@ class ApolloDepthSegmentation(data.Dataset):
         return len(self.files[self.split])
 
     def __getitem__(self, index):
-
         img_path = self.files[self.split][index].rstrip()
-        path = img_path.split(os.sep)[-8:]
+        path = img_path.split(os.sep)
         path[-1] = path[-1].split('.')[0] + '.png'
-        lbl_path = os.path.join(self.annotations_base,
-                                os.sep.join(path))
+        path[path.index('RGB')] = 'Depth'
+        lbl_path = os.sep.join(path)
 
         _img = Image.open(img_path).convert('RGB')
         if not os.path.exists(lbl_path):

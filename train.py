@@ -59,6 +59,10 @@ class Trainer(object):
                                      cuda=args.cuda,
                                      min_depth=args.min_depth,
                                      max_depth=args.max_depth).build_loss(mode=args.loss_type)
+        self.infer = DepthLosses(weight=weight,
+                                     cuda=args.cuda,
+                                     min_depth=args.min_depth,
+                                     max_depth=args.max_depth)
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
@@ -111,6 +115,9 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            if image.shape[0] == 1:
+                target = torch.cat([target, target], dim=0)
+                image = torch.cat([image, image], dim=0)
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
@@ -160,7 +167,7 @@ class Trainer(object):
             # pred = output.data.cpu().numpy()
             # target = target.cpu().numpy()
             # pred = np.argmax(pred, axis=1)
-            pred = self.criterion.pred_to_argmax_depth(pred)
+            pred = self.infer.pred_to_continous_depth(output)
             # Add batch sample into evaluator
             # self.evaluator.add_batch(target, pred)
             self.evaluator_depth.evaluateError(pred, target)

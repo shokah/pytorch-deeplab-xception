@@ -87,8 +87,8 @@ class DepthLosses(object):
         lamda = 1.0
         n, c, h, w = predict.size()
         predict = self.pred_to_continous_depth(predict)
-        di = (target - predict)
-        # di = (torch.log(target) - torch.log(predict))
+        di = target - predict
+        # di = torch.log(target) - torch.log(predict)
         k = h * w
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2)) / k
