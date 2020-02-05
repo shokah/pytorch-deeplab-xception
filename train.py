@@ -12,7 +12,7 @@ from utils.calculate_weights import calculate_weigths_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
-from utils.metrics import Evaluator
+from utils.metrics import Evaluator, EvaluatorDepth
 
 
 class Trainer(object):
@@ -62,7 +62,8 @@ class Trainer(object):
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
-        self.evaluator = Evaluator(self.nclass)
+        # self.evaluator = Evaluator(self.nclass)
+        self.evaluator_depth = EvaluatorDepth(args.batch_size)
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader))
@@ -74,7 +75,7 @@ class Trainer(object):
             self.model = self.model.cuda()
 
         # Resuming checkpoint
-        self.best_pred = 0.0
+        self.best_pred = 1e6
         if args.resume is not None:
             if not os.path.isfile(args.resume):
                 raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume))
@@ -116,7 +117,6 @@ class Trainer(object):
             self.optimizer.zero_grad()
             output = self.model(image)
             loss = self.criterion(output, target)
-            # import pdb;pdb.set_trace()
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
@@ -144,7 +144,8 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator.reset()
+        # self.evaluator.reset()
+        self.evaluator_depth.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -156,29 +157,60 @@ class Trainer(object):
             loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            pred = output.data.cpu().numpy()
-            target = target.cpu().numpy()
-            pred = np.argmax(pred, axis=1)
+            # pred = output.data.cpu().numpy()
+            # target = target.cpu().numpy()
+            # pred = np.argmax(pred, axis=1)
+            pred = self.criterion.pred_to_argmax_depth(pred)
             # Add batch sample into evaluator
-            self.evaluator.add_batch(target, pred)
+            # self.evaluator.add_batch(target, pred)
+            self.evaluator_depth.evaluateError(pred, target)
+
+        # # Fast test during the training
+        # Acc = self.evaluator.Pixel_Accuracy()
+        # Acc_class = self.evaluator.Pixel_Accuracy_Class()
+        # mIoU = self.evaluator.Mean_Intersection_over_Union()
+        # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+        # self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
+        # self.writer.add_scalar('val/mIoU', mIoU, epoch)
+        # self.writer.add_scalar('val/Acc', Acc, epoch)
+        # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
+        # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+        # print('Validation:')
+        # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        # print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+        # print('Loss: %.3f' % test_loss)
 
         # Fast test during the training
-        Acc = self.evaluator.Pixel_Accuracy()
-        Acc_class = self.evaluator.Pixel_Accuracy_Class()
-        mIoU = self.evaluator.Mean_Intersection_over_Union()
-        FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+        MSE = self.evaluator_depth.averageError['MSE']
+        RMSE = self.evaluator_depth.averageError['RMSE']
+        ABS_REL = self.evaluator_depth.averageError['ABS_REL']
+        LG10 = self.evaluator_depth.averageError['LG10']
+        MAE = self.evaluator_depth.averageError['MAE']
+        DELTA1 = self.evaluator_depth.averageError['DELTA1']
+        DELTA2 = self.evaluator_depth.averageError['DELTA2']
+        DELTA3 = self.evaluator_depth.averageError['DELTA3']
+
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/mIoU', mIoU, epoch)
-        self.writer.add_scalar('val/Acc', Acc, epoch)
-        self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-        self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+        self.writer.add_scalar('val/MSE', MSE, epoch)
+        self.writer.add_scalar('val/RMSE', RMSE, epoch)
+        self.writer.add_scalar('val/ABS_REL', ABS_REL, epoch)
+        self.writer.add_scalar('val/LG10', LG10, epoch)
+
+        self.writer.add_scalar('val/MAE', MAE, epoch)
+        self.writer.add_scalar('val/DELTA1', DELTA1, epoch)
+        self.writer.add_scalar('val/DELTA2', DELTA2, epoch)
+        self.writer.add_scalar('val/DELTA3', DELTA3, epoch)
+
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+        print(
+            "MSE:{}, RMSE:{}, ABS_REL:{}, LG10: {}\nMAE:{}, DELTA1:{}, DELTA2:{}, DELTA3: {}".format(MSE, RMSE, ABS_REL,
+                                                                                                     LG10, MAE, DELTA1,
+                                                                                                     DELTA2, DELTA3))
         print('Loss: %.3f' % test_loss)
 
-        new_pred = mIoU
-        if new_pred > self.best_pred:
+        new_pred = RMSE
+        if new_pred < self.best_pred:
             is_best = True
             self.best_pred = new_pred
             self.saver.save_checkpoint({
@@ -222,6 +254,8 @@ def main():
                         help='min depth to predict')
     parser.add_argument('--max_depth', type=float, default=655,
                         help='max depth to predict')
+    parser.add_argument('--task', type=str, default='depth',
+                        help='depth or segmentation')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')

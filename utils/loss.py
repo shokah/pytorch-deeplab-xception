@@ -84,12 +84,9 @@ class DepthLosses(object):
         :return:
         '''
 
-        predict = self.softmax(predict)
         lamda = 1.0
         n, c, h, w = predict.size()
-        bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
-            .expand(predict.size()).cuda()
-        predict = self.shift + self.bin_size * torch.sum(bins * predict, 1)
+        predict = self.pred_to_continous_depth(predict)
         di = (target - predict)
         # di = (torch.log(target) - torch.log(predict))
         k = h * w
@@ -100,6 +97,20 @@ class DepthLosses(object):
         if self.batch_average:
             loss /= n
         return loss.mean()
+
+    def pred_to_continous_depth(self, predict):
+        predict = self.softmax(predict)
+        n, c, h, w = predict.size()
+        bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
+            .expand(predict.size()).cuda()
+        predict = self.shift + self.bin_size * torch.sum(bins * predict, 1)
+        return predict
+
+    def pred_to_argmax_depth(self, predict):
+        predict = self.softmax(predict)
+        predict = torch.argmax(predict, dim=1)
+        predict = self.shift + self.bin_size * predict
+        return predict
 
     def DepthLODLoss(self, logit, target, gamma=2, alpha=0.5):
         n, c, h, w = logit.size()
