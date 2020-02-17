@@ -55,12 +55,11 @@ class SegmentationLosses(object):
 
 
 class DepthLosses(object):
-    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False, num_class=250,
+    def __init__(self, weight=None, size_average=True, ignore_index=255, cuda=False, num_class=250,
                  min_depth=0.0, max_depth=655.0):
         self.ignore_index = ignore_index
         self.weight = weight
         self.size_average = size_average
-        self.batch_average = batch_average
         self.cuda = cuda
         self.shift = min_depth
         self.bin_size = (max_depth - min_depth) / num_class
@@ -83,24 +82,22 @@ class DepthLosses(object):
         :param target: data set label
         :return:
         '''
-
         lamda = 0.5
-        n, c, h, w = predict.size()
         predict = self.pred_to_continous_depth(predict)
-        # di = target - predict
-        di = torch.log(target) - torch.log(predict)
-        k = h * w
+        # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
+        di = torch.log(predict) - torch.log(target)
+        k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
+        di[torch.isnan(di)] = 0  # ignore values out of range
+
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2)) / k
-        second_term = torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
-        loss = first_term - lamda * second_term
-        if self.batch_average:
-            loss /= n
+        second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
+        loss = first_term - second_term
+        # import pdb
+        # pdb.set_trace()
         return loss.mean()
 
     def pred_to_continous_depth(self, predict):
-        # import pdb;
-        # pdb.set_trace()
         predict = self.softmax(predict)
         n, c, h, w = predict.size()
         bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
@@ -127,10 +124,7 @@ class DepthLosses(object):
             logpt *= alpha
         loss = -((1 - pt) ** gamma) * logpt
 
-        if self.batch_average:
-            loss /= n
-
-        return loss
+        return loss.mean()
 
 
 if __name__ == "__main__":
