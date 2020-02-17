@@ -58,11 +58,13 @@ class Trainer(object):
         self.criterion = DepthLosses(weight=weight,
                                      cuda=args.cuda,
                                      min_depth=args.min_depth,
-                                     max_depth=args.max_depth).build_loss(mode=args.loss_type)
+                                     max_depth=args.max_depth,
+                                     num_class=args.num_class).build_loss(mode=args.loss_type)
         self.infer = DepthLosses(weight=weight,
-                                     cuda=args.cuda,
-                                     min_depth=args.min_depth,
-                                     max_depth=args.max_depth)
+                                 cuda=args.cuda,
+                                 min_depth=args.min_depth,
+                                 max_depth=args.max_depth,
+                                 num_class=args.num_class)
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
@@ -101,6 +103,8 @@ class Trainer(object):
             if not args.ft:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             self.best_pred = checkpoint['best_pred']
+            if args.loss_type == 'depth_loss':
+                self.best_pred = 1e6
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
 

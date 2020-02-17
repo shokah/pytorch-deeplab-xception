@@ -84,11 +84,11 @@ class DepthLosses(object):
         :return:
         '''
 
-        lamda = 1.0
+        lamda = 0.5
         n, c, h, w = predict.size()
         predict = self.pred_to_continous_depth(predict)
-        di = target - predict
-        # di = torch.log(target) - torch.log(predict)
+        # di = target - predict
+        di = torch.log(target) - torch.log(predict)
         k = h * w
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2)) / k
@@ -99,6 +99,8 @@ class DepthLosses(object):
         return loss.mean()
 
     def pred_to_continous_depth(self, predict):
+        # import pdb;
+        # pdb.set_trace()
         predict = self.softmax(predict)
         n, c, h, w = predict.size()
         bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
