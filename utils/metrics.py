@@ -109,6 +109,7 @@ class EvaluatorDepth(object):
             diffMatrix = torch.abs(_output - _target)
 
             errors['MSE'] = torch.sum(torch.pow(diffMatrix, 2)) / nValidElement
+            errors['RMSE'] = torch.sqrt(errors['MSE'])
 
             errors['MAE'] = torch.sum(diffMatrix) / nValidElement
 
@@ -133,6 +134,7 @@ class EvaluatorDepth(object):
                 torch.le(maxRatio, math.pow(1.25, 3)).float()) / nValidElement
 
             errors['MSE'] = float(errors['MSE'].data.cpu().numpy())
+            errors['RMSE'] = float(errors['RMSE'].data.cpu().numpy())
             errors['ABS_REL'] = float(errors['ABS_REL'].data.cpu().numpy())
             errors['LG10'] = float(errors['LG10'].data.cpu().numpy())
             errors['MAE'] = float(errors['MAE'].data.cpu().numpy())
@@ -146,6 +148,7 @@ class EvaluatorDepth(object):
     def addErrors(self, errors):
         self.total_number += self.batch_size
         self.errorSum['MSE'] += errors['MSE'] * self.batch_size
+        self.errorSum['RMSE'] += errors['RMSE'] * self.batch_size
         self.errorSum['ABS_REL'] += errors['ABS_REL'] * self.batch_size
         self.errorSum['LG10'] += errors['LG10'] * self.batch_size
         self.errorSum['MAE'] += errors['MAE'] * self.batch_size
@@ -163,4 +166,4 @@ class EvaluatorDepth(object):
         self.averageError['DELTA1'] = self.errorSum['DELTA1'] / self.total_number
         self.averageError['DELTA2'] = self.errorSum['DELTA2'] / self.total_number
         self.averageError['DELTA3'] = self.errorSum['DELTA3'] / self.total_number
-        self.averageError['RMSE'] = np.sqrt(self.averageError['MSE'])
+        self.averageError['RMSE'] = self.errorSum['RMSE'] / self.total_number

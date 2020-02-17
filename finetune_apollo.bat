@@ -6,9 +6,9 @@ C:\Users\gisstudent\.conda\envs\shai\python.exe train.py ^
  --workers 4 ^
  --epochs 20 ^
  --batch-size 2 ^
- --min_depth 0.1 ^
- --max_depth 50 ^
- --checkname deeplab-mobilenet_my ^
+ --min_depth 1 ^
+ --max_depth 51 ^
+ --checkname my_deeplab_mobilenet ^
  --eval-interval 1 ^
  --dataset apollo ^
  --loss-type depth_loss ^

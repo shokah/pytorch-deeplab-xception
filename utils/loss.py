@@ -87,6 +87,7 @@ class DepthLosses(object):
         # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
         di = torch.log(predict) - torch.log(target)
         k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
+        k[k == 0] = 1 # in case all pixels are out of range
         di[torch.isnan(di)] = 0  # ignore values out of range
 
         di2 = torch.pow(di, 2)
