@@ -3,16 +3,16 @@ import numpy as np
 import torch
 
 
-def decode_seg_map_sequence(label_masks, dataset='pascal'):
+def decode_seg_map_sequence(label_masks, dataset='pascal', n_classes=None):
     rgb_masks = []
     for label_mask in label_masks:
-        rgb_mask = decode_segmap(label_mask, dataset)
+        rgb_mask = decode_segmap(label_mask, dataset, n_classes=n_classes)
         rgb_masks.append(rgb_mask)
     rgb_masks = torch.from_numpy(np.array(rgb_masks).transpose([0, 3, 1, 2]))
     return rgb_masks
 
 
-def decode_segmap(label_mask, dataset, plot=False):
+def decode_segmap(label_mask, dataset, plot=False, n_classes=None):
     """Decode segmentation class labels into a color image
     Args:
         label_mask (np.ndarray): an (M,N) array of integer values denoting
@@ -29,8 +29,7 @@ def decode_segmap(label_mask, dataset, plot=False):
         n_classes = 19
         label_colours = get_cityscapes_labels()
     elif dataset == 'apollo':
-        n_classes = 250
-        label_colours = get_apollo_labels()
+        label_colours = get_apollo_labels(n_classes)
     else:
         raise NotImplementedError
 
@@ -92,9 +91,9 @@ def get_cityscapes_labels():
         [119, 11, 32]])
 
 
-def get_apollo_labels():
-    ''' 250 x 3'''
-    x = np.array([range(250)]).T
+def get_apollo_labels(n_class):
+    ''' n_class x 3'''
+    x = np.array([range(n_class)]).T
     x = np.repeat(x, 3, axis=1)
     return x
 

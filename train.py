@@ -137,7 +137,8 @@ class Trainer(object):
             # Show 10 * 3 inference results each epoch
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step,
+                                             n_class=self.args.num_class)
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
@@ -168,28 +169,9 @@ class Trainer(object):
             loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            # pred = output.data.cpu().numpy()
-            # target = target.cpu().numpy()
-            # pred = np.argmax(pred, axis=1)
             pred = self.infer.pred_to_continous_depth(output)
             # Add batch sample into evaluator
-            # self.evaluator.add_batch(target, pred)
             self.evaluator_depth.evaluateError(pred, target)
-
-        # # Fast test during the training
-        # Acc = self.evaluator.Pixel_Accuracy()
-        # Acc_class = self.evaluator.Pixel_Accuracy_Class()
-        # mIoU = self.evaluator.Mean_Intersection_over_Union()
-        # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
-        # self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        # self.writer.add_scalar('val/mIoU', mIoU, epoch)
-        # self.writer.add_scalar('val/Acc', Acc, epoch)
-        # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-        # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
-        # print('Validation:')
-        # print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        # print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
-        # print('Loss: %.3f' % test_loss)
 
         # Fast test during the training
         MSE = self.evaluator_depth.averageError['MSE']
@@ -244,8 +226,6 @@ def main():
                         help='dataset name (default: pascal)')
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')
-    parser.add_argument('--split_method', type=str, default='sid',
-                        help='depth splitting method (sid or ud)')
     parser.add_argument('--use-sbd', action='store_true', default=True,
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,

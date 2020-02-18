@@ -12,7 +12,7 @@ import torch
 class ApolloDepthSegmentation(data.Dataset):
 
     def __init__(self, args, root=Path.db_root_dir('apollo'), split="train", num_class=250, min_depth=5.0,
-                 max_depth=655.0, split_method='sid'):
+                 max_depth=655.0):
         self.NUM_CLASSES = num_class
         self.root = root
         self.split = split
@@ -20,11 +20,9 @@ class ApolloDepthSegmentation(data.Dataset):
         self.files = {}
         self.min_depth = min_depth
         self.max_depth = max_depth
-        self.split_method = split_method
 
         self.images_base = os.path.join(self.root, self.split, 'RGB')
         self.annotations_base = os.path.join(self.root, self.split, 'Depth')
-        self.mapping = self.depth_class_spliter(self.NUM_CLASSES, self.min_depth, self.max_depth, self.split_method)
 
         self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.jpg')
 
@@ -49,8 +47,6 @@ class ApolloDepthSegmentation(data.Dataset):
             print(f"{img_path} was deleted")
         _tmp = np.array(Image.open(lbl_path), dtype=np.uint8)
         _tmp = self.decode_apollo(_tmp)
-        # _tmp = self.classify_depth(_tmp, self.mapping)  # convert continuous depth to discrete depth
-        # _tmp = self.encode_segmap(_tmp)
         _tmp = self.clip_depth(_tmp)
         _target = Image.fromarray(_tmp)
 
@@ -72,8 +68,8 @@ class ApolloDepthSegmentation(data.Dataset):
         return mask
 
     def clip_depth(self, depth):
-        depth[self.min_depth > depth] = -1  # torch.tensor(float('nan'))
-        depth[self.max_depth < depth] = -1  # torch.tensor(float('nan'))
+        depth[self.min_depth > depth] = self.min_depth
+        depth[self.max_depth < depth] = self.max_depth
         return depth
 
     def recursive_glob(self, rootdir='.', suffix=''):
@@ -88,7 +84,8 @@ class ApolloDepthSegmentation(data.Dataset):
     def transform_tr(self, sample):
         composed_transforms = transforms.Compose([
             tr.RandomHorizontalFlip(),
-            tr.FixScaleCrop(crop_size=self.args.crop_size),
+            # tr.FixScaleCrop(crop_size=self.args.crop_size),
+            tr.FixedResize(size=self.args.crop_size),
             # tr.RandomScaleCrop(base_size=self.args.base_size, crop_size=self.args.crop_size, fill=255),
             tr.RandomGaussianBlur(),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
@@ -99,7 +96,8 @@ class ApolloDepthSegmentation(data.Dataset):
     def transform_val(self, sample):
 
         composed_transforms = transforms.Compose([
-            tr.FixScaleCrop(crop_size=self.args.crop_size),
+            # tr.FixScaleCrop(crop_size=self.args.crop_size),
+            tr.FixedResize(size=self.args.crop_size),
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 
@@ -113,32 +111,6 @@ class ApolloDepthSegmentation(data.Dataset):
             tr.ToTensor()])
 
         return composed_transforms(sample)
-
-    @staticmethod
-    def depth_class_spliter(n_class, min_depth, max_depth, method='ud'):
-        def ud(n_class, min_depth, max_depth):
-            for j in range(n_class - 1):
-                t = np.linspace(min_depth, max_depth, n_class)
-            return t
-
-        def sid(n_class, min_depth, max_depth):
-            m = []
-            c = n_class - 1
-            for j in range(n_class - 2):
-                t = np.exp(np.log(min_depth) + ((j * np.log(max_depth / min_depth)) / c))
-                m.append(t)
-            m = np.array(m)
-            return m
-
-        if method == 'ud':  # uniform distribution
-            return ud(n_class, min_depth, max_depth)
-        elif method == 'sid':
-            return sid(n_class, min_depth, max_depth)
-
-    @staticmethod
-    def classify_depth(depth, mapping):
-        dig_depth = np.digitize(depth, mapping).astype(np.uint8)
-        return dig_depth
 
     def decode_apollo(self, depth_im):
         R = depth_im[:, :, 0] / 255

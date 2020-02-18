@@ -4,6 +4,7 @@ import torch
 from collections import OrderedDict
 import glob
 
+
 class Saver(object):
 
     def __init__(self, args):
@@ -25,19 +26,27 @@ class Saver(object):
             with open(os.path.join(self.experiment_dir, 'best_pred.txt'), 'w') as f:
                 f.write(str(best_pred))
             if self.runs:
-                previous_miou = [0.0]
+                if 'depth' in self.args.loss_type:
+                    previous_score = [1e6]
+                else:
+                    previous_score = [0.0]
                 for run in self.runs:
                     run_id = run.split('_')[-1]
                     path = os.path.join(self.directory, 'experiment_{}'.format(str(run_id)), 'best_pred.txt')
                     if os.path.exists(path):
                         with open(path, 'r') as f:
-                            miou = float(f.readline())
-                            previous_miou.append(miou)
+                            score = float(f.readline())
+                            previous_score.append(score)
                     else:
                         continue
-                max_miou = max(previous_miou)
-                if best_pred > max_miou:
-                    shutil.copyfile(filename, os.path.join(self.directory, 'model_best.pth.tar'))
+                if 'depth' in self.args.loss_type:
+                    best_score = min(previous_score)
+                    if best_pred < best_score:
+                        shutil.copyfile(filename, os.path.join(self.directory, 'model_best.pth.tar'))
+                else:
+                    best_score = max(previous_score)
+                    if best_pred > best_score:
+                        shutil.copyfile(filename, os.path.join(self.directory, 'model_best.pth.tar'))
             else:
                 shutil.copyfile(filename, os.path.join(self.directory, 'model_best.pth.tar'))
 

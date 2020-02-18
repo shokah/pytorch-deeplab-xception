@@ -30,10 +30,7 @@ class SegmentationLosses(object):
 
         loss = criterion(logit, target.long())
 
-        if self.batch_average:
-            loss /= n
-
-        return loss
+        return loss.mean()
 
     def FocalLoss(self, logit, target, gamma=2, alpha=0.5):
         n, c, h, w = logit.size()
@@ -87,22 +84,22 @@ class DepthLosses(object):
         # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
         di = torch.log(predict) - torch.log(target)
         k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
-        k[k == 0] = 1 # in case all pixels are out of range
+        k[k == 0] = 1  # in case all pixels are out of range
         di[torch.isnan(di)] = 0  # ignore values out of range
 
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2)) / k
         second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
         loss = first_term - second_term
-        # import pdb
-        # pdb.set_trace()
         return loss.mean()
 
     def pred_to_continous_depth(self, predict):
         predict = self.softmax(predict)
         n, c, h, w = predict.size()
         bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) \
-            .expand(predict.size()).cuda()
+            .expand(predict.size())
+        if self.cuda:
+            bins = bins.cuda()
         predict = self.shift + self.bin_size * torch.sum(bins * predict, 1)
         return predict
 

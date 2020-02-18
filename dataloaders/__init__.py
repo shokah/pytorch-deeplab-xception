@@ -30,14 +30,13 @@ def make_data_loader(args, **kwargs):
 
     elif args.dataset == 'apollo':
         num_class = args.num_class
-        split_method = args.split_method
         min_depth = args.min_depth
         max_depth = args.max_depth
-        train_set = apollo.ApolloDepthSegmentation(args, split='train', num_class=num_class, split_method=split_method,
+        train_set = apollo.ApolloDepthSegmentation(args, split='train', num_class=num_class,
                                                    min_depth=min_depth, max_depth=max_depth)
-        val_set = apollo.ApolloDepthSegmentation(args, split='val', num_class=num_class, split_method=split_method,
+        val_set = apollo.ApolloDepthSegmentation(args, split='val', num_class=num_class,
                                                  min_depth=min_depth, max_depth=max_depth)
-        test_set = apollo.ApolloDepthSegmentation(args, split='test', num_class=num_class, split_method=split_method,
+        test_set = apollo.ApolloDepthSegmentation(args, split='test', num_class=num_class,
                                                   min_depth=min_depth, max_depth=max_depth)
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, **kwargs)
         val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, **kwargs)
