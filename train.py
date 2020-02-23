@@ -55,21 +55,24 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        self.criterion = DepthLosses(weight=weight,
+        if 'Depth' in args.loss_type:
+            self.criterion = DepthLosses(weight=weight,
+                                         cuda=args.cuda,
+                                         min_depth=args.min_depth,
+                                         max_depth=args.max_depth,
+                                         num_class=args.num_class).build_loss(mode=args.loss_type)
+            self.infer = DepthLosses(weight=weight,
                                      cuda=args.cuda,
                                      min_depth=args.min_depth,
                                      max_depth=args.max_depth,
-                                     num_class=args.num_class).build_loss(mode=args.loss_type)
-        self.infer = DepthLosses(weight=weight,
-                                 cuda=args.cuda,
-                                 min_depth=args.min_depth,
-                                 max_depth=args.max_depth,
-                                 num_class=args.num_class)
+                                     num_class=args.num_class)
+            self.evaluator_depth = EvaluatorDepth(args.batch_size)
+        else:
+            self.criterion = SegmentationLosses(cuda=args.cuda, weight=weight).build_loss(mode=args.loss_type)
+            self.evaluator = Evaluator(self.nclass)
+
         self.model, self.optimizer = model, optimizer
 
-        # Define Evaluator
-        # self.evaluator = Evaluator(self.nclass)
-        self.evaluator_depth = EvaluatorDepth(args.batch_size)
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader))
@@ -81,7 +84,8 @@ class Trainer(object):
             self.model = self.model.cuda()
 
         # Resuming checkpoint
-        self.best_pred = 1e6
+        if args.loss_type == 'depth_loss':
+            self.best_pred = 1e6
         if args.resume is not None:
             if not os.path.isfile(args.resume):
                 raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume))
@@ -119,6 +123,9 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            if self.args.dataset == 'apollo_seg':
+                target[target > self.args.cut_point] = 1
+                target[target < self.args.cut_point] = 0
             if image.shape[0] == 1:
                 target = torch.cat([target, target], dim=0)
                 image = torch.cat([image, image], dim=0)
@@ -137,6 +144,8 @@ class Trainer(object):
             # Show 10 * 3 inference results each epoch
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
+                target[
+                    torch.isnan(target)] = 0  # change nan values to zero for display (handle warning from tensorboard)
                 self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step,
                                              n_class=self.args.num_class)
 
@@ -156,12 +165,18 @@ class Trainer(object):
 
     def validation(self, epoch):
         self.model.eval()
-        # self.evaluator.reset()
-        self.evaluator_depth.reset()
+
+        if 'depth' in self.args.loss_type:
+            self.evaluator_depth.reset()
+        else:
+            self.evaluator.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            if self.args.dataset == 'apollo_seg':
+                target[target > self.args.cut_point] = 1
+                target[target < self.args.cut_point] = 0
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
@@ -169,49 +184,59 @@ class Trainer(object):
             loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            pred = self.infer.pred_to_continous_depth(output)
-            # Add batch sample into evaluator
-            self.evaluator_depth.evaluateError(pred, target)
+            if 'depth' in self.args.loss_type:
+                pred = self.infer.pred_to_continous_depth(output)
+                # Add batch sample into evaluator
+                self.evaluator_depth.evaluateError(pred, target)
+            else:
+                pred = torch.argmax(output, 1)
+                # Add batch sample into evaluator
+                self.evaluator.add_batch(target, pred)
+        if 'depth' in self.args.loss_type:
+            # Fast test during the training
+            MSE = self.evaluator_depth.averageError['MSE']
+            RMSE = self.evaluator_depth.averageError['RMSE']
+            ABS_REL = self.evaluator_depth.averageError['ABS_REL']
+            LG10 = self.evaluator_depth.averageError['LG10']
+            MAE = self.evaluator_depth.averageError['MAE']
+            DELTA1 = self.evaluator_depth.averageError['DELTA1']
+            DELTA2 = self.evaluator_depth.averageError['DELTA2']
+            DELTA3 = self.evaluator_depth.averageError['DELTA3']
 
-        # Fast test during the training
-        MSE = self.evaluator_depth.averageError['MSE']
-        RMSE = self.evaluator_depth.averageError['RMSE']
-        ABS_REL = self.evaluator_depth.averageError['ABS_REL']
-        LG10 = self.evaluator_depth.averageError['LG10']
-        MAE = self.evaluator_depth.averageError['MAE']
-        DELTA1 = self.evaluator_depth.averageError['DELTA1']
-        DELTA2 = self.evaluator_depth.averageError['DELTA2']
-        DELTA3 = self.evaluator_depth.averageError['DELTA3']
+            self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
+            self.writer.add_scalar('val/MSE', MSE, epoch)
+            self.writer.add_scalar('val/RMSE', RMSE, epoch)
+            self.writer.add_scalar('val/ABS_REL', ABS_REL, epoch)
+            self.writer.add_scalar('val/LG10', LG10, epoch)
 
-        self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/MSE', MSE, epoch)
-        self.writer.add_scalar('val/RMSE', RMSE, epoch)
-        self.writer.add_scalar('val/ABS_REL', ABS_REL, epoch)
-        self.writer.add_scalar('val/LG10', LG10, epoch)
+            self.writer.add_scalar('val/MAE', MAE, epoch)
+            self.writer.add_scalar('val/DELTA1', DELTA1, epoch)
+            self.writer.add_scalar('val/DELTA2', DELTA2, epoch)
+            self.writer.add_scalar('val/DELTA3', DELTA3, epoch)
 
-        self.writer.add_scalar('val/MAE', MAE, epoch)
-        self.writer.add_scalar('val/DELTA1', DELTA1, epoch)
-        self.writer.add_scalar('val/DELTA2', DELTA2, epoch)
-        self.writer.add_scalar('val/DELTA3', DELTA3, epoch)
+            print('Validation:')
+            print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+            print(
+                "MSE:{}, RMSE:{}, ABS_REL:{}, LG10: {}\nMAE:{}, DELTA1:{}, DELTA2:{}, DELTA3: {}".format(MSE, RMSE,
+                                                                                                         ABS_REL,
+                                                                                                         LG10, MAE,
+                                                                                                         DELTA1,
+                                                                                                         DELTA2,
+                                                                                                         DELTA3))
+            new_pred = RMSE
+            if new_pred < self.best_pred:
+                is_best = True
+                self.best_pred = new_pred
+                self.saver.save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': self.model.module.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'best_pred': self.best_pred,
+                }, is_best)
+        else:
+            pass  # todo: insert segmentation calculations here and save commands
 
-        print('Validation:')
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        print(
-            "MSE:{}, RMSE:{}, ABS_REL:{}, LG10: {}\nMAE:{}, DELTA1:{}, DELTA2:{}, DELTA3: {}".format(MSE, RMSE, ABS_REL,
-                                                                                                     LG10, MAE, DELTA1,
-                                                                                                     DELTA2, DELTA3))
         print('Loss: %.3f' % test_loss)
-
-        new_pred = RMSE
-        if new_pred < self.best_pred:
-            is_best = True
-            self.best_pred = new_pred
-            self.saver.save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': self.model.module.state_dict(),
-                'optimizer': self.optimizer.state_dict(),
-                'best_pred': self.best_pred,
-            }, is_best)
 
 
 def main():
@@ -222,7 +247,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='pascal',
-                        choices=['pascal', 'coco', 'cityscapes', 'apollo'],
+                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'apollo_seg'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')
@@ -239,14 +264,14 @@ def main():
     parser.add_argument('--freeze-bn', type=bool, default=False,
                         help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='depth_loss',
-                        choices=['ce', 'focal', 'depth_loss', 'depth_lod'],
+                        choices=['ce', 'focal', 'depth_loss'],
                         help='loss func type (default: ce)')
     parser.add_argument('--min_depth', type=float, default=0.1,
                         help='min depth to predict')
     parser.add_argument('--max_depth', type=float, default=655,
                         help='max depth to predict')
-    parser.add_argument('--task', type=str, default='depth',
-                        help='depth or segmentation')
+    parser.add_argument('--cut_point', type=float, default=100.0,
+                        help='beyond this value depth is considered far')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')

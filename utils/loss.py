@@ -5,11 +5,10 @@ import numpy as np
 
 
 class SegmentationLosses(object):
-    def __init__(self, weight=None, size_average=True, batch_average=True, ignore_index=255, cuda=False):
+    def __init__(self, weight=None, ignore_index=255, cuda=False):
         self.ignore_index = ignore_index
         self.weight = weight
-        self.size_average = size_average
-        self.batch_average = batch_average
+
         self.cuda = cuda
 
     def build_loss(self, mode='ce'):
@@ -22,9 +21,7 @@ class SegmentationLosses(object):
             raise NotImplementedError
 
     def CrossEntropyLoss(self, logit, target):
-        n, c, h, w = logit.size()
-        criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index,
-                                        size_average=self.size_average)
+        criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index)
         if self.cuda:
             criterion = criterion.cuda()
 
@@ -34,8 +31,7 @@ class SegmentationLosses(object):
 
     def FocalLoss(self, logit, target, gamma=2, alpha=0.5):
         n, c, h, w = logit.size()
-        criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index,
-                                        size_average=self.size_average)
+        criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index)
         if self.cuda:
             criterion = criterion.cuda()
 
@@ -52,11 +48,10 @@ class SegmentationLosses(object):
 
 
 class DepthLosses(object):
-    def __init__(self, weight=None, size_average=True, ignore_index=255, cuda=False, num_class=250,
+    def __init__(self, weight=None, ignore_index=255, cuda=False, num_class=250,
                  min_depth=0.0, max_depth=655.0):
         self.ignore_index = ignore_index
         self.weight = weight
-        self.size_average = size_average
         self.cuda = cuda
         self.shift = min_depth
         self.bin_size = (max_depth - min_depth) / num_class
@@ -67,8 +62,6 @@ class DepthLosses(object):
         """Choices: ['depth_loss' or 'depth_lod']"""
         if mode == 'depth_loss':
             return self.DepthLoss
-        elif mode == 'depth_lod':
-            return self.DepthLODLoss
         else:
             raise NotImplementedError
 
@@ -108,21 +101,6 @@ class DepthLosses(object):
         predict = torch.argmax(predict, dim=1)
         predict = self.shift + self.bin_size * predict
         return predict
-
-    def DepthLODLoss(self, logit, target, gamma=2, alpha=0.5):
-        n, c, h, w = logit.size()
-        criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index,
-                                        size_average=self.size_average)
-        if self.cuda:
-            criterion = criterion.cuda()
-
-        logpt = -criterion(logit, target.long())
-        pt = torch.exp(logpt)
-        if alpha is not None:
-            logpt *= alpha
-        loss = -((1 - pt) ** gamma) * logpt
-
-        return loss.mean()
 
 
 if __name__ == "__main__":

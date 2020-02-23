@@ -20,6 +20,7 @@ class TensorboardSummary(object):
                                                        dataset=dataset, n_classes=n_class), 3, normalize=False,
                                range=(0, 255))
         writer.add_image('Predicted label', grid_image, global_step)
+
         grid_image = make_grid(decode_seg_map_sequence(torch.squeeze(target[:3], 1).detach().cpu().numpy(),
                                                        dataset=dataset, n_classes=n_class), 3, normalize=False,
                                range=(0, 255))

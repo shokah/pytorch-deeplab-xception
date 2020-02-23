@@ -87,7 +87,7 @@ class EvaluatorDepth(object):
         return torch.ne(x, x)
 
     def setNanToZero(self, input, target):
-        target[target == -1] = torch.tensor(float('nan'))
+        # target[target == -1] = torch.tensor(float('nan'))
         nanMask = self.getNanMask(target)
         nValidElement = self.nValid(target)
 

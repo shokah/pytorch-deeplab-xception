@@ -28,7 +28,7 @@ def make_data_loader(args, **kwargs):
 
         return train_loader, val_loader, test_loader, num_class
 
-    elif args.dataset == 'apollo':
+    elif args.dataset == 'apollo' or args.dataset == 'apollo_seg':
         num_class = args.num_class
         min_depth = args.min_depth
         max_depth = args.max_depth

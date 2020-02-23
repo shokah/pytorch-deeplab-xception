@@ -30,6 +30,9 @@ def decode_segmap(label_mask, dataset, plot=False, n_classes=None):
         label_colours = get_cityscapes_labels()
     elif dataset == 'apollo':
         label_colours = get_apollo_labels(n_classes)
+    elif dataset == 'apollo_seg':
+        n_classes = 2
+        label_colours = get_apollo_labels(n_classes)
     else:
         raise NotImplementedError
 

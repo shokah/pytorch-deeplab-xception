@@ -68,8 +68,8 @@ class ApolloDepthSegmentation(data.Dataset):
         return mask
 
     def clip_depth(self, depth):
-        depth[self.min_depth > depth] = self.min_depth
-        depth[self.max_depth < depth] = self.max_depth
+        depth[self.min_depth > depth] = torch.tensor(float('nan'))  # self.min_depth
+        depth[self.max_depth < depth] = torch.tensor(float('nan'))  # self.max_depth
         return depth
 
     def recursive_glob(self, rootdir='.', suffix=''):
