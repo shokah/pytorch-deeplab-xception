@@ -5,8 +5,10 @@ C:\Users\gisstudent\.conda\envs\shai\python.exe train.py ^
  --workers 4 ^
  --epochs 20 ^
  --batch-size 2 ^
+ --min_depth -1 ^
+ --max_depth 999 ^
  --cut_point 100 ^
- --checkname my_deeplab_mobilenet_near ^
+ --checkname my_deeplab_mobilenet_seg2class ^
  --eval-interval 1 ^
  --dataset apollo_seg ^
  --loss-type ce ^

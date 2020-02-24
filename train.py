@@ -124,8 +124,8 @@ class Trainer(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.dataset == 'apollo_seg':
+                target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
-                target[target < self.args.cut_point] = 0
             if image.shape[0] == 1:
                 target = torch.cat([target, target], dim=0)
                 image = torch.cat([image, image], dim=0)
@@ -169,14 +169,15 @@ class Trainer(object):
         if 'depth' in self.args.loss_type:
             self.evaluator_depth.reset()
         else:
+            softmax = nn.Softmax(1)
             self.evaluator.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.dataset == 'apollo_seg':
+                target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
-                target[target < self.args.cut_point] = 0
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
@@ -189,7 +190,10 @@ class Trainer(object):
                 # Add batch sample into evaluator
                 self.evaluator_depth.evaluateError(pred, target)
             else:
-                pred = torch.argmax(output, 1)
+                output = softmax(output)
+                pred = output.data.cpu().numpy()
+                target = target.cpu().numpy()
+                pred = np.argmax(pred, axis=1)
                 # Add batch sample into evaluator
                 self.evaluator.add_batch(target, pred)
         if 'depth' in self.args.loss_type:
@@ -234,7 +238,31 @@ class Trainer(object):
                     'best_pred': self.best_pred,
                 }, is_best)
         else:
-            pass  # todo: insert segmentation calculations here and save commands
+            # Fast test during the training
+            Acc = self.evaluator.Pixel_Accuracy()
+            Acc_class = self.evaluator.Pixel_Accuracy_Class()
+            mIoU = self.evaluator.Mean_Intersection_over_Union()
+            FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+            self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
+            self.writer.add_scalar('val/mIoU', mIoU, epoch)
+            self.writer.add_scalar('val/Acc', Acc, epoch)
+            self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
+            self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+            print('Validation:')
+            print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+            print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+            print('Loss: %.3f' % test_loss)
+
+            new_pred = mIoU
+            if new_pred > self.best_pred:
+                is_best = True
+                self.best_pred = new_pred
+                self.saver.save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': self.model.module.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'best_pred': self.best_pred,
+                }, is_best)
 
         print('Loss: %.3f' % test_loss)
 

@@ -91,6 +91,8 @@ def main():
         output = infer.pred_to_continous_depth(output).detach().cpu().numpy().squeeze()
     plt.imsave(args.out_path, output)
 
+    print("\nDone !!! \n")
+
 
 if __name__ == "__main__":
     main()

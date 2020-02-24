@@ -32,7 +32,7 @@ def decode_segmap(label_mask, dataset, plot=False, n_classes=None):
         label_colours = get_apollo_labels(n_classes)
     elif dataset == 'apollo_seg':
         n_classes = 2
-        label_colours = get_apollo_labels(n_classes)
+        label_colours = get_apollo_seg_labels()
     else:
         raise NotImplementedError
 
@@ -97,6 +97,13 @@ def get_cityscapes_labels():
 def get_apollo_labels(n_class):
     ''' n_class x 3'''
     x = np.array([range(n_class)]).T
+    x = np.repeat(x, 3, axis=1)
+    return x
+
+
+def get_apollo_seg_labels():
+    ''' n_class x 3'''
+    x = np.array([[0, 255]]).T
     x = np.repeat(x, 3, axis=1)
     return x
 
