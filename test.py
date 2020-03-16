@@ -62,8 +62,12 @@ class Eval(object):
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
                 output = self.model(image)
+            if self.infer.num_class > 1:
+                pred = self.infer.pred_to_continous_depth(output)
+            else:
+                output = self.infer.sigmoid(output)
+                pred = self.infer.depth01_to_depth(output).detach().cpu().numpy().squeeze()
 
-            pred = self.infer.pred_to_continous_depth(output)
             # Add batch sample into evaluator
             self.evaluator_depth.evaluateError(pred, target)
 

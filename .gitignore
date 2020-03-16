@@ -111,3 +111,6 @@ models/
 
 # reults examples
 examples/
+
+# point cloud files
+*.txt

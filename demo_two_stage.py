@@ -152,9 +152,11 @@ def main():
     seg_path = args.out_path.split('.')[0] + "_seg.png"
     near_path = args.out_path.split('.')[0] + "_near.png"
     far_path = args.out_path.split('.')[0] + "_far.png"
+    gt_path = args.out_path.split('.')[0] + "_GT.png"
     plt.imsave(seg_path, output_seg)
     plt.imsave(near_path, output_near)
     plt.imsave(far_path, output_far)
+    # plt.imsave(gt_path, tensor_in.detach().cpu().numpy().squeeze())
 
 
 if __name__ == "__main__":

@@ -88,8 +88,14 @@ def main():
     model.eval()
     with torch.no_grad():
         output = model(tensor_in)
-        output = infer.pred_to_continous_depth(output).detach().cpu().numpy().squeeze()
+        if infer.num_class > 1:
+            output = infer.pred_to_continous_depth(output).detach().cpu().numpy().squeeze()
+        else:
+            output = infer.sigmoid(output)
+            output = infer.depth01_to_depth(output).detach().cpu().numpy().squeeze()
+    # gt_path = args.out_path.split('.')[0] + "_GT.png"
     plt.imsave(args.out_path, output)
+    # plt.imsave(gt_path, target)
 
     print("\nDone !!! \n")
 

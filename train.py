@@ -55,7 +55,7 @@ class Trainer(object):
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
-        if 'Depth' in args.loss_type:
+        if 'depth' in args.loss_type:
             self.criterion = DepthLosses(weight=weight,
                                          cuda=args.cuda,
                                          min_depth=args.min_depth,
@@ -84,7 +84,7 @@ class Trainer(object):
             self.model = self.model.cuda()
 
         # Resuming checkpoint
-        if args.loss_type == 'depth_loss':
+        if 'depth' in args.loss_type:
             self.best_pred = 1e6
         if args.resume is not None:
             if not os.path.isfile(args.resume):
@@ -107,7 +107,7 @@ class Trainer(object):
             if not args.ft:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             self.best_pred = checkpoint['best_pred']
-            if args.loss_type == 'depth_loss':
+            if 'depth' in args.loss_type:
                 self.best_pred = 1e6
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
@@ -186,7 +186,12 @@ class Trainer(object):
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
             if 'depth' in self.args.loss_type:
-                pred = self.infer.pred_to_continous_depth(output)
+                if self.infer.num_class > 1:
+                    pred = self.infer.pred_to_continous_depth(output)
+                else:
+                    output = self.infer.sigmoid(output.squeeze(1))
+                    pred = self.infer.depth01_to_depth(output)
+                    # import pdb;pdb.set_trace()
                 # Add batch sample into evaluator
                 self.evaluator_depth.evaluateError(pred, target)
             else:
@@ -292,11 +297,11 @@ def main():
     parser.add_argument('--freeze-bn', type=bool, default=False,
                         help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='depth_loss',
-                        choices=['ce', 'focal', 'depth_loss'],
+                        choices=['ce', 'focal', 'depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss'],
                         help='loss func type (default: ce)')
     parser.add_argument('--min_depth', type=float, default=0.1,
                         help='min depth to predict')
-    parser.add_argument('--max_depth', type=float, default=655,
+    parser.add_argument('--max_depth', type=float, default=656.0,
                         help='max depth to predict')
     parser.add_argument('--cut_point', type=float, default=100.0,
                         help='beyond this value depth is considered far')

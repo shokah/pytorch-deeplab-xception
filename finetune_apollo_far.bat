@@ -1,12 +1,12 @@
 C:\Users\gisstudent\.conda\envs\shai\python.exe train.py ^
  --backbone mobilenet ^
  --lr 0.001 ^
- --num_class 100 ^
+ --num_class 50 ^
  --workers 4 ^
  --epochs 20 ^
  --batch-size 2 ^
  --min_depth 100 ^
- --max_depth 655 ^
+ --max_depth 656 ^
  --checkname my_deeplab_mobilenet_far ^
  --eval-interval 1 ^
  --dataset apollo ^
