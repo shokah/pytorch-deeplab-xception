@@ -7,8 +7,8 @@ C:\Users\gisstudent\.conda\envs\shai\python.exe train.py ^
  --batch-size 2 ^
  --min_depth 3 ^
  --max_depth 656 ^
- --checkname sigmoid_loss ^
+ --checkname sigmoid_grad_loss_full_train ^
  --eval-interval 1 ^
  --dataset apollo ^
- --loss-type depth_sigmoid_loss
+ --loss-type depth_sigmoid_grad_loss
  @pause

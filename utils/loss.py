@@ -4,6 +4,27 @@ from torch.nn import functional as F
 import numpy as np
 
 
+class Sobel(nn.Module):
+    def __init__(self):
+        super(Sobel, self).__init__()
+        self.edge_conv = nn.Conv2d(1, 2, kernel_size=3, stride=1, padding=1, bias=False)
+        edge_kx = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
+        edge_ky = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+        edge_k = np.stack((edge_kx, edge_ky))
+
+        edge_k = torch.from_numpy(edge_k).float().view(2, 1, 3, 3)
+        self.edge_conv.weight = nn.Parameter(edge_k)
+
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        out = self.edge_conv(x)
+        out = out.contiguous().view(-1, 2, x.size(2), x.size(3))
+
+        return out
+
+
 class SegmentationLosses(object):
     def __init__(self, weight=None, ignore_index=255, cuda=False):
         self.ignore_index = ignore_index
@@ -65,6 +86,10 @@ class DepthLosses(object):
         self.max_depth = max_depth
         self.min_depth = min_depth
         self.sigmoid = nn.Sigmoid()
+        self.cos = nn.CosineSimilarity(dim=1, eps=0)
+        self.get_gradient = Sobel()
+        if self.cuda:
+            self.get_gradient = self.get_gradient.cuda()
         # self.sigmoid = self.my_sigmoid
 
     def build_loss(self, mode='depth_loss'):
@@ -75,6 +100,8 @@ class DepthLosses(object):
             return self.DepthPCLoss
         elif mode == 'depth_sigmoid_loss':
             return self.DepthSigmoid
+        elif mode == 'depth_sigmoid_grad_loss':
+            return self.DepthGradSigmoid
         else:
             raise NotImplementedError
 
@@ -121,6 +148,31 @@ class DepthLosses(object):
         second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
         loss = first_term - second_term
         return loss.mean()
+
+    def DepthGradSigmoid(self, predict, target):
+        '''
+        revisiting depth estimation loss function
+        :param depth: depth label # target
+        :param output: CNN output # predict
+        :return: loss values
+        '''
+        loss_depth = self.DepthSigmoid(predict, target)
+        target = target.unsqueeze(1)
+
+        depth_grad = self.get_gradient(target).squeeze(1)
+        output_grad = self.get_gradient(predict).squeeze(1)
+        depth_grad_dx = depth_grad[:, 0, :, :].contiguous().view_as(predict)
+        depth_grad_dy = depth_grad[:, 1, :, :].contiguous().view_as(predict)
+        output_grad_dx = output_grad[:, 0, :, :].contiguous().view_as(predict)
+        output_grad_dy = output_grad[:, 1, :, :].contiguous().view_as(predict)
+
+        loss_dx = self.sigmoid(output_grad_dx) - self.sigmoid(depth_grad_dx)
+        loss_dy = self.sigmoid(output_grad_dy) - self.sigmoid(depth_grad_dy)
+
+        loss_grad = (loss_dx + loss_dy).mean()
+        loss = loss_depth + loss_grad
+        # import pdb;pdb.set_trace()
+        return loss
 
     def DepthPCLoss(self, predict, target):
         '''

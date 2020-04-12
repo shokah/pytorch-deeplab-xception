@@ -297,7 +297,8 @@ def main():
     parser.add_argument('--freeze-bn', type=bool, default=False,
                         help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='depth_loss',
-                        choices=['ce', 'focal', 'depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss'],
+                        choices=['ce', 'focal', 'depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss',
+                                 'depth_sigmoid_grad_loss'],
                         help='loss func type (default: ce)')
     parser.add_argument('--min_depth', type=float, default=0.1,
                         help='min depth to predict')
