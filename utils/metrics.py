@@ -78,7 +78,7 @@ class EvaluatorDepth(object):
         return z
 
     def nValid(self, x):
-        return torch.sum(torch.eq(x, x).float())
+        return torch.sum(x > 0)
 
     def nNanElement(self, x):
         return torch.sum(torch.ne(x, x).float())
@@ -87,26 +87,30 @@ class EvaluatorDepth(object):
         return torch.ne(x, x)
 
     def setNanToZero(self, input, target):
-        # target[target == -1] = torch.tensor(float('nan'))
-        nanMask = self.getNanMask(target)
         nValidElement = self.nValid(target)
 
         _input = input.clone()
         _target = target.clone()
 
-        _input[nanMask] = 0
-        _target[nanMask] = 0
+        # _input[torch.isinf(_input)] = 0  # ignore values out of range
+        _input[torch.isnan(_target)] = 0  # ignore values out of range
+        # _target[torch.isinf(_target)] = 0  # ignore values out of range
+        _target[torch.isnan(_target)] = 0  # ignore values out of range
 
-        return _input, _target, nanMask, nValidElement
+        return _input, _target, None, nValidElement
 
     def evaluateError(self, output, target):
         errors = {'MSE': 0, 'RMSE': 0, 'ABS_REL': 0, 'LG10': 0,
                   'MAE': 0, 'DELTA1': 0, 'DELTA2': 0, 'DELTA3': 0}
 
-        _output, _target, nanMask, nValidElement = self.setNanToZero(output, target)
+        _output, _target, _, nValidElement = self.setNanToZero(output, target)
 
         if (nValidElement.data.cpu().numpy() > 0):
             diffMatrix = torch.abs(_output - _target)
+            diffMatrix[torch.isnan(diffMatrix)] = 0  # ignore values out of range
+            diffMatrix[torch.isinf(diffMatrix)] = 0  # ignore values out of range
+            # import pdb;
+            # pdb.set_trace()
 
             errors['MSE'] = torch.sum(torch.pow(diffMatrix, 2)) / nValidElement
             errors['RMSE'] = torch.sqrt(errors['MSE'])
@@ -114,11 +118,13 @@ class EvaluatorDepth(object):
             errors['MAE'] = torch.sum(diffMatrix) / nValidElement
 
             realMatrix = torch.div(diffMatrix, _target)
-            realMatrix[nanMask] = 0
+            realMatrix[torch.isinf(realMatrix)] = 0  # ignore values out of range
+            realMatrix[torch.isnan(realMatrix)] = 0  # ignore values out of range
             errors['ABS_REL'] = torch.sum(realMatrix) / nValidElement
 
             LG10Matrix = torch.abs(self.lg10(_output) - self.lg10(_target))
-            LG10Matrix[nanMask] = 0
+            LG10Matrix[torch.isnan(LG10Matrix)] = 0  # ignore values out of range
+            LG10Matrix[torch.isinf(LG10Matrix)] = 0  # ignore values out of range
             errors['LG10'] = torch.sum(LG10Matrix) / nValidElement
 
             yOverZ = torch.div(_output, _target)

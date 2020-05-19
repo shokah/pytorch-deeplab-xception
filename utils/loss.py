@@ -119,11 +119,13 @@ class DepthLosses(object):
         k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
         k[k == 0] = 1  # in case all pixels are out of range
         di[torch.isnan(di)] = 0  # ignore values out of range
+        di[torch.isinf(di)] = 0  # ignore values out of range
 
         di2 = torch.pow(di, 2)
         first_term = torch.sum(di2, (1, 2)) / k
         second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
         loss = first_term - second_term
+
         return loss.mean()
 
     def DepthSigmoid(self, predict, target):

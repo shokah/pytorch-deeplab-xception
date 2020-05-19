@@ -96,7 +96,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='pascal',
-                        choices=['pascal', 'coco', 'cityscapes', 'apollo'],
+                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'farsight'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')

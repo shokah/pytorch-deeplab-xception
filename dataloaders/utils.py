@@ -28,7 +28,7 @@ def decode_segmap(label_mask, dataset, plot=False, n_classes=None):
     elif dataset == 'cityscapes':
         n_classes = 19
         label_colours = get_cityscapes_labels()
-    elif dataset == 'apollo':
+    elif dataset == 'apollo' or 'farsight':
         label_colours = get_apollo_labels(n_classes)
     elif dataset == 'apollo_seg':
         n_classes = 2

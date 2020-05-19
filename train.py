@@ -41,8 +41,11 @@ class Trainer(object):
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
         # Define Optimizer
-        optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
-                                    weight_decay=args.weight_decay, nesterov=args.nesterov)
+        # set optimizer
+        optimizer = torch.optim.Adam(train_params, args.lr)
+        # self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer, 0.99)
+        # optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
+        #                             weight_decay=args.weight_decay, nesterov=args.nesterov)
 
         # Define Criterion
         # whether to use class balanced weights
@@ -123,6 +126,8 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            # import pdb;
+            # pdb.set_trace()
             if self.args.dataset == 'apollo_seg':
                 target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
@@ -175,6 +180,7 @@ class Trainer(object):
         test_loss = 0.0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
+            # import pdb;pdb.set_trace()
             if self.args.dataset == 'apollo_seg':
                 target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
@@ -184,7 +190,7 @@ class Trainer(object):
                 output = self.model(image)
             loss = self.criterion(output, target)
             test_loss += loss.item()
-            tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
+            tbar.set_description('Val loss: %.3f' % (test_loss / (i + 1)))
             if 'depth' in self.args.loss_type:
                 if self.infer.num_class > 1:
                     pred = self.infer.pred_to_continous_depth(output)
@@ -280,7 +286,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='pascal',
-                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'apollo_seg'],
+                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'apollo_seg', 'farsight'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')

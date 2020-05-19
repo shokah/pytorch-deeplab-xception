@@ -12,6 +12,8 @@ class Path(object):
         elif dataset == 'apollo':
             # return r'D:\Shai_Schneider\Apollo_dataset'
             return r'D:\Shai_Schneider\Apollo_tiny'
+        elif dataset == 'farsight':
+            return r'D:\Shai_Schneider\farsight_513x513'
         else:
             print('Dataset {} not available.'.format(dataset))
             raise NotImplementedError
