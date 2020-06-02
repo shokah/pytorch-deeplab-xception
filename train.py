@@ -29,7 +29,8 @@ class Trainer(object):
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
-
+        if args.cut_point > -1 and args.num_class2 > -1:
+            self.nclass += 1
         # Define network
         model = DeepLab(num_classes=self.nclass,
                         backbone=args.backbone,
@@ -63,12 +64,16 @@ class Trainer(object):
                                          cuda=args.cuda,
                                          min_depth=args.min_depth,
                                          max_depth=args.max_depth,
-                                         num_class=args.num_class).build_loss(mode=args.loss_type)
+                                         num_class=args.num_class,
+                                         cut_point=args.cut_point,
+                                         num_class2=args.num_class2).build_loss(mode=args.loss_type)
             self.infer = DepthLosses(weight=weight,
                                      cuda=args.cuda,
                                      min_depth=args.min_depth,
                                      max_depth=args.max_depth,
-                                     num_class=args.num_class)
+                                     num_class=args.num_class,
+                                     cut_point=args.cut_point,
+                                     num_class2=args.num_class2)
             self.evaluator_depth = EvaluatorDepth(args.batch_size)
         else:
             self.criterion = SegmentationLosses(cuda=args.cuda, weight=weight).build_loss(mode=args.loss_type)
@@ -128,7 +133,7 @@ class Trainer(object):
             image, target = sample['image'], sample['label']
             # import pdb;
             # pdb.set_trace()
-            if self.args.dataset == 'apollo_seg':
+            if self.args.dataset == 'apollo_seg' or self.args.dataset == 'farsight_seg':
                 target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
             if image.shape[0] == 1:
@@ -139,7 +144,10 @@ class Trainer(object):
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output = self.model(image)
-            loss = self.criterion(output, target)
+            if self.args.loss_type == 'depth_sigmoid_loss_inverse':
+                loss = self.criterion(output, target, inverse=True)
+            else:
+                loss = self.criterion(output, target)
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
@@ -163,7 +171,7 @@ class Trainer(object):
             is_best = False
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
-                'state_dict': self.model.module.state_dict(),
+                'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
@@ -181,22 +189,34 @@ class Trainer(object):
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             # import pdb;pdb.set_trace()
-            if self.args.dataset == 'apollo_seg':
+            if self.args.dataset == 'apollo_seg' or self.args.dataset == 'farsight_seg':
                 target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
                 output = self.model(image)
-            loss = self.criterion(output, target)
+            if self.args.loss_type == 'depth_sigmoid_loss_inverse':
+                loss = self.criterion(output, target, inverse=True)
+            else:
+                loss = self.criterion(output, target)
             test_loss += loss.item()
             tbar.set_description('Val loss: %.3f' % (test_loss / (i + 1)))
             if 'depth' in self.args.loss_type:
-                if self.infer.num_class > 1:
+                if self.args.loss_type == 'depth_loss':
                     pred = self.infer.pred_to_continous_depth(output)
-                else:
+                elif self.args.loss_type == 'depth_avg_sigmoid_class':
+                    pred = self.infer.pred_to_continous_depth_avg(output)
+                elif self.args.loss_type == 'depth_loss_combination':
+                    pred = self.infer.pred_to_continous_combination(output)
+                elif self.args.loss_type == 'depth_loss_two_distributions':
+                    pred = self.infer.pred_to_continous_depth_two_distributions(output)
+                elif 'depth_sigmoid_loss' in self.args.loss_type:
                     output = self.infer.sigmoid(output.squeeze(1))
-                    pred = self.infer.depth01_to_depth(output)
+                    if 'inverse' in self.args.loss_type:
+                        pred = self.infer.depth01_to_depth(output, True)
+                    else:
+                        pred = self.infer.depth01_to_depth(output)
                     # import pdb;pdb.set_trace()
                 # Add batch sample into evaluator
                 self.evaluator_depth.evaluateError(pred, target)
@@ -270,7 +290,7 @@ class Trainer(object):
                 self.best_pred = new_pred
                 self.saver.save_checkpoint({
                     'epoch': epoch + 1,
-                    'state_dict': self.model.module.state_dict(),
+                    'state_dict': self.model.state_dict(),
                     'optimizer': self.optimizer.state_dict(),
                     'best_pred': self.best_pred,
                 }, is_best)
@@ -286,10 +306,12 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
     parser.add_argument('--dataset', type=str, default='pascal',
-                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'apollo_seg', 'farsight'],
+                        choices=['pascal', 'coco', 'cityscapes', 'apollo', 'apollo_seg', 'farsight', 'farsight_seg'],
                         help='dataset name (default: pascal)')
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')
+    parser.add_argument('--num_class2', type=int, default=-1,
+                        help='number of wanted classes for far network')
     parser.add_argument('--use-sbd', action='store_true', default=True,
                         help='whether to use SBD dataset (default: True)')
     parser.add_argument('--workers', type=int, default=4,
@@ -304,13 +326,14 @@ def main():
                         help='whether to freeze bn parameters (default: False)')
     parser.add_argument('--loss-type', type=str, default='depth_loss',
                         choices=['ce', 'focal', 'depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss',
-                                 'depth_sigmoid_grad_loss'],
+                                 'depth_sigmoid_grad_loss', 'depth_loss_two_distributions',
+                                 'depth_sigmoid_loss_inverse', 'depth_avg_sigmoid_class', 'depth_loss_combination'],
                         help='loss func type (default: ce)')
     parser.add_argument('--min_depth', type=float, default=0.1,
                         help='min depth to predict')
     parser.add_argument('--max_depth', type=float, default=656.0,
                         help='max depth to predict')
-    parser.add_argument('--cut_point', type=float, default=100.0,
+    parser.add_argument('--cut_point', type=float, default=-1,
                         help='beyond this value depth is considered far')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',

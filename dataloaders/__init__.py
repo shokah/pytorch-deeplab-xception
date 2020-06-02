@@ -47,7 +47,7 @@ def make_data_loader(args, **kwargs):
 
         return train_loader, val_loader, test_loader, num_class
 
-    elif args.dataset == 'farsight':
+    elif args.dataset == 'farsight' or args.dataset== 'farsight_seg':
 
         num_class = args.num_class
         min_depth = args.min_depth

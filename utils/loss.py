@@ -70,21 +70,47 @@ class SegmentationLosses(object):
 
 class DepthLosses(object):
     def __init__(self, weight=None, ignore_index=255, cuda=False, num_class=250,
-                 min_depth=0.0, max_depth=655.0):
+                 min_depth=0.0, max_depth=655.0, cut_point=-1, num_class2=-1):
+        '''
+
+        :param weight:
+        :param ignore_index:
+        :param cuda:
+        :param num_class: total number of classes
+        :param min_depth: min of all the range
+        :param max_depth: max of all the range
+        :param cut_point:
+        :param num_class2: number of classes of the far part
+        '''
         self.ignore_index = ignore_index
         self.weight = weight
         self.cuda = cuda
         self.shift = min_depth
-        self.bin_size = (max_depth - min_depth) / num_class
-        self.num_class = num_class
+        if cut_point == -1 and num_class2 == -1:
+            self.bin_size = (max_depth - min_depth) / num_class
+            self.num_class = num_class
+            self.max_depth = max_depth
+            self.min_depth = min_depth
+        else:
+            num_class += 1  # one more class for near/far prediction
+            self.max_depth = cut_point
+            self.min_depth = min_depth
+            self.num_class = num_class - num_class2 - 1
+            self.bin_size = (cut_point - min_depth) / self.num_class
+
+            self.shift2 = cut_point
+            self.bin_size2 = (max_depth - cut_point) / num_class2
+            self.num_class2 = num_class2
+            self.max_depth2 = max_depth
+            self.min_depth2 = cut_point
+
         self.softmax = nn.Softmax(1)
         self.l2_loss = nn.MSELoss()
         k = np.array([[2015.0, 0, 960.0],
                       [0, 2015.0, 540.0],
                       [0, 0, 1]])
         self.k_inv = np.linalg.inv(k)
-        self.max_depth = max_depth
-        self.min_depth = min_depth
+
         self.sigmoid = nn.Sigmoid()
         self.cos = nn.CosineSimilarity(dim=1, eps=0)
         self.get_gradient = Sobel()
@@ -96,12 +122,18 @@ class DepthLosses(object):
         """Choices: ['depth_loss' or 'depth_lod']"""
         if mode == 'depth_loss':
             return self.DepthLoss
+        if mode == 'depth_loss_two_distributions':
+            return self.DepthLoss2Distributions
         elif mode == 'depth_pc_loss':
             return self.DepthPCLoss
-        elif mode == 'depth_sigmoid_loss':
+        elif mode == 'depth_sigmoid_loss' or mode == 'depth_sigmoid_loss_inverse':
             return self.DepthSigmoid
         elif mode == 'depth_sigmoid_grad_loss':
             return self.DepthGradSigmoid
+        elif mode == 'depth_avg_sigmoid_class':
+            return self.DepthAvgSigmoidClass
+        elif mode == 'depth_loss_combination':
+            return self.DepthLossCombination
         else:
             raise NotImplementedError
 
@@ -128,7 +160,57 @@ class DepthLosses(object):
 
         return loss.mean()
 
-    def DepthSigmoid(self, predict, target):
+    def DepthLoss2Distributions(self, predict, target):
+        '''
+        scale invariant depth on label space
+        :param predict: network output
+        :param target: data set label
+        :return:
+        '''
+        lamda = 0.5
+        predict_joined = self.pred_to_continous_depth_two_distributions(predict)
+        # import pdb;
+        # pdb.set_trace()
+        # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
+        di = torch.log(predict_joined) - torch.log(target)
+        k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
+        k[k == 0] = 1  # in case all pixels are out of range
+        di[torch.isnan(di)] = 0  # ignore values out of range
+        di[torch.isinf(di)] = 0  # ignore values out of range
+
+        di2 = torch.pow(di, 2)
+        first_term = torch.sum(di2, (1, 2)) / k
+        second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
+        loss = first_term - second_term
+
+        return loss.mean()
+
+    def DepthLossCombination(self, predict, target):
+        '''
+        scale invariant depth on label space
+        :param predict: network output
+        :param target: data set label
+        :return:
+        '''
+        lamda = 0.5
+        predict = self.pred_to_continous_combination(predict)
+        # import pdb;
+        # pdb.set_trace()
+        # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
+        di = torch.log(predict) - torch.log(target)
+        k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
+        k[k == 0] = 1  # in case all pixels are out of range
+        di[torch.isnan(di)] = 0  # ignore values out of range
+        di[torch.isinf(di)] = 0  # ignore values out of range
+
+        di2 = torch.pow(di, 2)
+        first_term = torch.sum(di2, (1, 2)) / k
+        second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
+        loss = first_term - second_term
+
+        return loss.mean()
+
+    def DepthAvgSigmoidClass(self, predict, target, inverse=False):
         '''
         scale invariant depth on label space
         :param predict: network output
@@ -137,7 +219,29 @@ class DepthLosses(object):
         '''
         lamda = 0.5
         # import pdb;pdb.set_trace()
-        target = self.depth_to_01(target)
+        predict = self.pred_to_continous_depth_avg(predict, inverse)
+        # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
+        di = torch.log(predict) - torch.log(target)
+        k = torch.sum(torch.eq(di, di).float(), (1, 2))  # number of valid pixels
+        k[k == 0] = 1  # in case all pixels are out of range
+        di[torch.isnan(di)] = 0  # ignore values out of range
+
+        di2 = torch.pow(di, 2)
+        first_term = torch.sum(di2, (1, 2)) / k
+        second_term = lamda * torch.pow(torch.sum(di, (1, 2)), 2) / (k ** 2)
+        loss = first_term - second_term
+        return loss.mean()
+
+    def DepthSigmoid(self, predict, target, inverse=False):
+        '''
+        scale invariant depth on label space
+        :param predict: network output
+        :param target: data set label
+        :return:
+        '''
+        lamda = 0.5
+        # import pdb;pdb.set_trace()
+        target = self.depth_to_01(target, inverse)
         predict = self.sigmoid(predict.squeeze(1))
         # targets that are out of depth range wont affect loss calculation (they will have nan value after log)
         di = torch.log(predict) - torch.log(target)
@@ -208,10 +312,47 @@ class DepthLosses(object):
     def pred_to_continous_depth(self, predict):
         predict = self.softmax(predict)
         n, c, h, w = predict.size()
-        bins = torch.from_numpy(np.arange(0, c)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).expand(predict.size())
+        bins = torch.from_numpy(np.arange(0, c, dtype=np.float)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).expand(
+            predict.size())
         if self.cuda:
             bins = bins.cuda()
         predict = self.shift + self.bin_size * torch.sum(bins * predict, 1)
+        return predict
+
+    def pred_to_continous_depth2(self, predict):
+        predict = self.softmax(predict)
+        n, c, h, w = predict.size()
+        bins = torch.from_numpy(np.arange(0, c, dtype=np.float)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).expand(
+            predict.size())
+        if self.cuda:
+            bins = bins.cuda()
+        predict = self.shift2 + self.bin_size2 * torch.sum(bins * predict, 1)
+        return predict
+
+    def pred_to_continous_depth_avg(self, predict, inverse=False):
+        pred_sig = self.depth01_to_depth(self.sigmoid(predict[:, -1, :, :]), inverse)
+        pred_class = self.pred_to_continous_depth(predict[:, :-1, :, :])
+        predict = 0.5 * (pred_sig + pred_class)
+        return predict
+
+    def pred_to_continous_depth_two_distributions(self, predict):
+        predict_near = self.pred_to_continous_depth(predict[:, :self.num_class, :, :])
+        predict_far = self.pred_to_continous_depth2(predict[:, self.num_class:self.num_class + self.num_class2, :, :])
+        seg = self.sigmoid(predict[:, -1, :, :])
+        predict_near[seg >= 0.5] = 0
+        predict_far[seg < 0.5] = 0
+        predict_joined = predict_near + predict_far
+        return predict_joined
+
+    def pred_to_continous_combination(self, predict):
+        predict = self.sigmoid(predict)
+        # import pdb;
+        # pdb.set_trace()
+        bins = torch.from_numpy(np.array([1.0, 10.0, 100.0], dtype=np.float)).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).expand(
+            predict.size())
+        if self.cuda:
+            bins = bins.cuda()
+        predict = torch.sum(bins * predict, 1)
         return predict
 
     def pred_to_argmax_depth(self, predict):
@@ -230,18 +371,19 @@ class DepthLosses(object):
         y = depth * (self.k_inv[1, 1] * y + self.k_inv[1, 2])
         return x, y
 
-    def depth_to_01(self, depth):
+    def depth_to_01(self, depth, inverse=False):
         const = (self.max_depth - self.min_depth)
-        depth01 = 1 + (self.min_depth - depth) / const
+        depth01 = (depth - self.min_depth) / const
+        if inverse:
+            depth01 = -depth01 + 1
         return depth01
 
-    def depth01_to_depth(self, depth01):
+    def depth01_to_depth(self, depth01, inverse=False):
         const = (self.max_depth - self.min_depth)
-        depth = -((depth01 - 1) * const - self.min_depth)
+        if inverse:
+            depth01 = -depth01 + 1
+        depth = depth01 * const + self.min_depth
         return depth
-
-    def my_sigmoid(self, x, k=1):
-        return 1 / (1 + torch.exp(-k * x))
 
 
 if __name__ == "__main__":

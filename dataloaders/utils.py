@@ -30,7 +30,7 @@ def decode_segmap(label_mask, dataset, plot=False, n_classes=None):
         label_colours = get_cityscapes_labels()
     elif dataset == 'apollo' or 'farsight':
         label_colours = get_apollo_labels(n_classes)
-    elif dataset == 'apollo_seg':
+    elif dataset == 'apollo_seg' or dataset == 'farsight_seg':
         n_classes = 2
         label_colours = get_apollo_seg_labels()
     else:
