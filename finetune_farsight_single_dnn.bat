@@ -1,7 +1,7 @@
 C:\Users\gisstudent\.conda\envs\shai\python.exe train.py ^
  --backbone mobilenet ^
  --lr 0.01 ^
- --num_class 250 ^
+ --num_class 150 ^
  --num_class2 100 ^
  --cut_point 200 ^
  --workers 4 ^

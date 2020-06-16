@@ -92,10 +92,9 @@ class DepthLosses(object):
             self.max_depth = max_depth
             self.min_depth = min_depth
         else:
-            num_class += 1  # one more class for near/far prediction
             self.max_depth = cut_point
             self.min_depth = min_depth
-            self.num_class = num_class - num_class2 - 1
+            self.num_class = num_class
             self.bin_size = (cut_point - min_depth) / self.num_class
 
             self.shift2 = cut_point
@@ -103,6 +102,7 @@ class DepthLosses(object):
             self.num_class2 = num_class2
             self.max_depth2 = max_depth
             self.min_depth2 = cut_point
+
 
         self.softmax = nn.Softmax(1)
         self.l2_loss = nn.MSELoss()

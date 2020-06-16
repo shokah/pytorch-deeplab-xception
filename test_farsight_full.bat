@@ -5,6 +5,7 @@ C:\Users\gisstudent\.conda\envs\shai\python.exe test.py ^
  --max_depth 1000.1 ^
  --batch-size 2 ^
  --dataset farsight ^
+ --loss-type depth_loss ^
  --ckpt D:\Shai_Schneider\pytorch-deeplab-xception\run\farsight\my_deeplab_mobilenet_full_farsight\model_best.pth.tar
  
  @pause

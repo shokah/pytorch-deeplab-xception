@@ -17,15 +17,21 @@ class Eval(object):
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         _, _, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
+        if args.loss_type == 'depth_loss_two_distributions':
+            self.nclass = args.num_class + args.num_class2 + 1
+        if args.loss_type == 'depth_avg_sigmoid_class':
+            self.nclass = args.num_class + args.num_class2
+        # import pdb;
+        # pdb.set_trace()
 
         # Define network
-        model = DeepLab(num_classes=args.num_class,
+        model = DeepLab(num_classes=self.nclass,
                         backbone=args.backbone,
                         output_stride=args.out_stride,
                         sync_bn=args.sync_bn,
                         freeze_bn=args.freeze_bn)
         self.model = model
-        if args.num_class2 > 0:
+        if self.args.loss_type == 'depth_multi_dnn':
             model2 = DeepLab(num_classes=args.num_class2,
                              backbone=args.backbone,
                              output_stride=args.out_stride,
@@ -40,20 +46,34 @@ class Eval(object):
             self.model_seg = model_seg
 
         # Define Criterion
-        self.infer = DepthLosses(
-            cuda=args.cuda,
-            min_depth=args.min_depth,
-            max_depth=args.max_depth,
-            num_class=args.num_class)
 
         self.infer2 = None
-        if args.min_depth2 > 0 and args.max_depth2 > 0:
+        if self.args.loss_type == 'depth_multi_dnn':
+            self.infer = DepthLosses(
+                cuda=args.cuda,
+                min_depth=args.min_depth,
+                max_depth=args.cut_point,
+                num_class=args.num_class,
+                cut_point=-1,
+                num_class2=-1)
+
             self.infer2 = DepthLosses(
                 cuda=args.cuda,
-                min_depth=args.min_depth2,
-                max_depth=args.max_depth2,
-                num_class=args.num_class2)
-            self.softmax = nn.Softmax(1)
+                min_depth=args.cut_point,
+                max_depth=args.max_depth,
+                num_class=args.num_class2,
+                cut_point=-1,
+                num_class2=-1)
+        else:
+            self.infer = DepthLosses(
+                cuda=args.cuda,
+                min_depth=args.min_depth,
+                max_depth=args.max_depth,
+                num_class=args.num_class,
+                cut_point=args.cut_point,
+                num_class2=args.num_class2)
+
+        self.softmax = nn.Softmax(1)
 
         # Define Evaluator
         self.evaluator_depth = EvaluatorDepth(args.batch_size)
@@ -63,7 +83,7 @@ class Eval(object):
             self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
             patch_replication_callback(self.model)
             self.model = self.model.cuda()
-            if args.num_class2 > 0:
+            if self.args.loss_type == 'depth_multi_dnn':
                 self.model2 = torch.nn.DataParallel(self.model2, device_ids=self.args.gpu_ids)
                 patch_replication_callback(self.model2)
                 self.model2 = self.model2.cuda()
@@ -74,7 +94,7 @@ class Eval(object):
 
         if not args.cuda:
             ckpt = torch.load(args.ckpt, map_location='cpu')
-            if args.num_class2 == 0:
+            if self.args.loss_type == 'depth_multi_dnn':
                 ckpt2 = torch.load(args.ckpt2, map_location='cpu')
                 ckpt_seg = torch.load(args.ckpt_seg, map_location='cpu')
                 self.model2.load_state_dict(ckpt2['state_dict'])
@@ -82,7 +102,7 @@ class Eval(object):
             self.model.load_state_dict(ckpt['state_dict'])
         else:
             ckpt = torch.load(args.ckpt)
-            if args.num_class2 > 0:
+            if self.args.loss_type == 'depth_multi_dnn':
                 ckpt2 = torch.load(args.ckpt2)
                 ckpt_seg = torch.load(args.ckpt_seg)
                 self.model2.module.load_state_dict(ckpt2['state_dict'])
@@ -93,6 +113,9 @@ class Eval(object):
 
     def evaluate(self):
         self.model.eval()
+        if self.args.loss_type == 'depth_multi_dnn':
+            self.model2.eval()
+            self.model_seg.eval()
         self.evaluator_depth.reset()
         tbar = tqdm(self.test_loader, desc='\r')
 
@@ -102,11 +125,34 @@ class Eval(object):
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
                 output = self.model(image)
-            if self.infer.num_class > 1:
-                pred = self.infer.pred_to_continous_depth(output)
-            else:
-                output = self.infer.sigmoid(output)
-                pred = self.infer.depth01_to_depth(output).detach().cpu().numpy().squeeze()
+
+            pred = None
+            if 'depth' in self.args.loss_type:
+                if self.args.loss_type == 'depth_loss':
+                    pred = self.infer.pred_to_continous_depth(output)
+                elif self.args.loss_type == 'depth_avg_sigmoid_class':
+                    pred = self.infer.pred_to_continous_depth_avg(output)
+                elif self.args.loss_type == 'depth_loss_combination':
+                    pred = self.infer.pred_to_continous_combination(output)
+                elif self.args.loss_type == 'depth_loss_two_distributions':
+                    pred = self.infer.pred_to_continous_depth_two_distributions(output)
+                elif self.args.loss_type == 'depth_multi_dnn':
+                    with torch.no_grad():
+                        output2 = self.model2(image)
+                        output_seg = self.model_seg(image)
+                    pred = self.infer.pred_to_continous_depth(output)
+                    pred2 = self.infer2.pred_to_continous_depth(output2)
+                    pred_seg = self.softmax(output_seg)
+                    # join results
+                    pred_seg = torch.argmax(pred_seg, dim=1)
+                    pred = torch.where(pred_seg == 0, pred, pred2)
+
+                elif 'depth_sigmoid_loss' in self.args.loss_type:
+                    output = self.infer.sigmoid(output.squeeze(1))
+                    if 'inverse' in self.args.loss_type:
+                        pred = self.infer.depth01_to_depth(output, True)
+                    else:
+                        pred = self.infer.depth01_to_depth(output)
 
             # Add batch sample into evaluator
             self.evaluator_depth.evaluateError(pred, target)
@@ -187,10 +233,19 @@ def main():
     parser.add_argument('--dataset', type=str, default='pascal',
                         choices=['pascal', 'coco', 'cityscapes', 'apollo', 'farsight'],
                         help='dataset name (default: pascal)')
+
     parser.add_argument('--num_class', type=int, default=100,
                         help='number of wanted classes')
-    parser.add_argument('--num_class2', type=int, default=0,
+    parser.add_argument('--num_class2', type=int, default=-1,
                         help='number of wanted classes')
+
+    parser.add_argument('--loss-type', type=str, default='depth_loss',
+                        choices=['depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss',
+                                 'depth_sigmoid_grad_loss', 'depth_loss_two_distributions',
+                                 'depth_sigmoid_loss_inverse', 'depth_avg_sigmoid_class', 'depth_loss_combination',
+                                 'depth_multi_dnn'],
+                        help='loss func type - affect they way nn output is converted to depth')
+
     parser.add_argument('--workers', type=int, default=4,
                         metavar='N', help='dataloader threads')
     parser.add_argument('--sync-bn', type=bool, default=None,
@@ -208,11 +263,12 @@ def main():
                         help='min depth to predict')
     parser.add_argument('--max_depth', type=float, default=655,
                         help='max depth to predict')
-
-    parser.add_argument('--min_depth2', type=float, default=-1,
-                        help='min depth to predict')
-    parser.add_argument('--max_depth2', type=float, default=-1,
-                        help='max depth to predict')
+    parser.add_argument('--cut_point', type=float, default=-1,
+                        help='beyond this value depth is considered far')
+    # parser.add_argument('--min_depth2', type=float, default=-1,
+    #                     help='min depth to predict')
+    # parser.add_argument('--max_depth2', type=float, default=-1,
+    #                     help='max depth to predict')
 
     parser.add_argument('--task', type=str, default='depth',
                         help='depth or segmentation')

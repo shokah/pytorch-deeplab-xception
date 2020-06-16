@@ -29,8 +29,10 @@ class Trainer(object):
         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
-        if args.cut_point > -1 and args.num_class2 > -1:
-            self.nclass += 1
+        if args.loss_type == 'depth_loss_two_distributions':
+            self.nclass = args.num_class + args.num_class2 + 1
+        if args.loss_type == 'depth_avg_sigmoid_class':
+            self.nclass = args.num_class + args.num_class2
         # Define network
         model = DeepLab(num_classes=self.nclass,
                         backbone=args.backbone,
@@ -131,8 +133,6 @@ class Trainer(object):
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
-            # import pdb;
-            # pdb.set_trace()
             if self.args.dataset == 'apollo_seg' or self.args.dataset == 'farsight_seg':
                 target[target <= self.args.cut_point] = 0
                 target[target > self.args.cut_point] = 1
