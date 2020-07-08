@@ -10,8 +10,8 @@ class Path(object):
         elif dataset == 'coco':
             return '/path/to/datasets/coco/'
         elif dataset == 'apollo':
-            # return r'D:\Shai_Schneider\Apollo_dataset'
-            return r'D:\Shai_Schneider\Apollo_tiny'
+            return r'D:\Shai_Schneider\Apollo_dataset'
+            # return r'D:\Shai_Schneider\Apollo_tiny'
         elif dataset == 'farsight':
             return r'D:\Shai_Schneider\farsight_513x513'
         else:

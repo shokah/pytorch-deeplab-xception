@@ -21,8 +21,6 @@ class Eval(object):
             self.nclass = args.num_class + args.num_class2 + 1
         if args.loss_type == 'depth_avg_sigmoid_class':
             self.nclass = args.num_class + args.num_class2
-        # import pdb;
-        # pdb.set_trace()
 
         # Define network
         model = DeepLab(num_classes=self.nclass,
@@ -44,6 +42,17 @@ class Eval(object):
                                 sync_bn=args.sync_bn,
                                 freeze_bn=args.freeze_bn)
             self.model_seg = model_seg
+
+        if self.args.loss_type == 'depth_with_aprox_depth':
+            # add input layer to the model
+            self.input_conv = nn.Conv2d(4, 3, 3, padding=1)
+            model2 = DeepLab(num_classes=1,
+                             backbone=args.backbone,
+                             output_stride=args.out_stride,
+                             sync_bn=args.sync_bn,
+                             freeze_bn=args.freeze_bn)
+            self.model2 = model2 # aprox model
+
 
         # Define Criterion
 
@@ -92,6 +101,21 @@ class Eval(object):
                 patch_replication_callback(self.model_seg)
                 self.model_seg = self.model_seg.cuda()
 
+            if self.args.loss_type == 'depth_with_aprox_depth':
+                self.input_conv = self.input_conv.cuda()
+
+                self.model = nn.Sequential(
+                    self.input_conv,
+                    self.model
+                )
+                self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+                patch_replication_callback(self.model)
+                self.model = self.model.cuda()
+
+                self.model2 = torch.nn.DataParallel(self.model2, device_ids=self.args.gpu_ids)
+                patch_replication_callback(self.model2)
+                self.model2 = self.model2.cuda()
+
         if not args.cuda:
             ckpt = torch.load(args.ckpt, map_location='cpu')
             if self.args.loss_type == 'depth_multi_dnn':
@@ -99,6 +123,11 @@ class Eval(object):
                 ckpt_seg = torch.load(args.ckpt_seg, map_location='cpu')
                 self.model2.load_state_dict(ckpt2['state_dict'])
                 self.model_seg.load_state_dict(ckpt_seg['state_dict'])
+
+            if self.args.loss_type == 'depth_with_aprox_depth':
+                ckpt2 = torch.load(args.ckpt2, map_location='cpu')
+                self.model2.load_state_dict(ckpt2['state_dict'])
+
             self.model.load_state_dict(ckpt['state_dict'])
         else:
             ckpt = torch.load(args.ckpt)
@@ -107,6 +136,11 @@ class Eval(object):
                 ckpt_seg = torch.load(args.ckpt_seg)
                 self.model2.module.load_state_dict(ckpt2['state_dict'])
                 self.model_seg.load_state_dict(ckpt_seg['state_dict'])
+
+            if self.args.loss_type == 'depth_with_aprox_depth':
+                ckpt2 = torch.load(args.ckpt2)
+                self.model2.module.load_state_dict(ckpt2['state_dict'])
+
             self.model.module.load_state_dict(ckpt['state_dict'])
 
         print("\nLoad checkpoints...\n")
@@ -116,6 +150,8 @@ class Eval(object):
         if self.args.loss_type == 'depth_multi_dnn':
             self.model2.eval()
             self.model_seg.eval()
+        if self.args.loss_type == 'depth_with_aprox_depth':
+            self.model2.eval()
         self.evaluator_depth.reset()
         tbar = tqdm(self.test_loader, desc='\r')
 
@@ -124,7 +160,14 @@ class Eval(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                output = self.model(image)
+                if 'depth_with_aprox_depth' in self.args.loss_type:
+                    # import pdb;pdb.set_trace()
+                    aprox_depth = self.model2(image)
+                    aprox_depth = self.infer.sigmoid(aprox_depth)
+                    input = torch.cat([image, aprox_depth], dim=1)
+                    output = self.model(input)
+                else:
+                    output = self.model(image)
 
             pred = None
             if 'depth' in self.args.loss_type:
@@ -153,6 +196,11 @@ class Eval(object):
                         pred = self.infer.depth01_to_depth(output, True)
                     else:
                         pred = self.infer.depth01_to_depth(output)
+
+                elif 'depth_with_aprox_depth' in self.args.loss_type:
+                    output = self.infer.sigmoid(output.squeeze(1))
+                    pred = self.infer.depth01_to_depth(output)
+
 
             # Add batch sample into evaluator
             self.evaluator_depth.evaluateError(pred, target)
@@ -243,7 +291,7 @@ def main():
                         choices=['depth_loss', 'depth_pc_loss', 'depth_sigmoid_loss',
                                  'depth_sigmoid_grad_loss', 'depth_loss_two_distributions',
                                  'depth_sigmoid_loss_inverse', 'depth_avg_sigmoid_class', 'depth_loss_combination',
-                                 'depth_multi_dnn'],
+                                 'depth_multi_dnn', 'depth_with_aprox_depth'],
                         help='loss func type - affect they way nn output is converted to depth')
 
     parser.add_argument('--workers', type=int, default=4,
